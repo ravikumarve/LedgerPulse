@@ -1,0 +1,129 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// === Core Models ===
+
+model Vendor {
+  id          String   @id @default(uuid())
+  name        String
+  gstin       String?  @unique
+  contractRef String?
+  email       String?
+  phone       String?
+  address     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  invoices      Invoice[]
+  deliveryNotes DeliveryNote[]
+}
+
+enum DocumentStatus {
+  PENDING
+  PROCESSED
+  MATCHED
+  DISCREPANCY
+  RESOLVED
+}
+
+enum DocumentType {
+  INVOICE
+  DELIVERY_NOTE
+  EWAY_BILL
+}
+
+model Invoice {
+  id              String         @id @default(uuid())
+  vendorId        String
+  invoiceNumber   String
+  invoiceDate     DateTime
+  totalAmount     Float
+  taxAmount       Float?
+  lineItems       String?        // JSON string of parsed line items
+  filePath        String?
+  rawText         String?        // OCR-extracted text
+  status          DocumentStatus @default(PENDING)
+  ingestedAt      DateTime       @default(now())
+  processedAt     DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  vendor         Vendor          @relation(fields: [vendorId], references: [id])
+  deliveryNotes  DeliveryNote[]
+  ewayBills      EWayBill[]
+  matchResults   MatchResult[]
+
+  @@unique([vendorId, invoiceNumber])
+  @@index([status])
+}
+
+model DeliveryNote {
+  id                String         @id @default(uuid())
+  vendorId          String
+  deliveryNoteNumber String
+  deliveryDate      DateTime
+  invoiceId         String?
+  totalQuantity     Float
+  lineItems         String?        // JSON string
+  filePath          String?
+  rawText           String?        // OCR-extracted text
+  weightbridgeValue  Float?         // Weighbridge gross weight
+  status            DocumentStatus @default(PENDING)
+  ingestedAt        DateTime       @default(now())
+  processedAt       DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  vendor            Vendor         @relation(fields: [vendorId], references: [id])
+  invoice           Invoice?       @relation(fields: [invoiceId], references: [id])
+
+  @@unique([vendorId, deliveryNoteNumber])
+  @@index([status])
+}
+
+model EWayBill {
+  id              String         @id @default(uuid())
+  ewayBillNumber  String         @unique
+  invoiceId       String?
+  generatedDate   DateTime
+  validUntil      DateTime
+  fromGstin       String
+  toGstin         String
+  totalValue      Float
+  transportMode   String?
+  vehicleNumber   String?
+  status          DocumentStatus @default(PENDING)
+  rawData         String?        // JSON of original API response
+  ingestedAt      DateTime       @default(now())
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  invoice         Invoice?       @relation(fields: [invoiceId], references: [id])
+
+  @@index([ewayBillNumber])
+  @@index([status])
+}
+
+model MatchResult {
+  id              String   @id @default(uuid())
+  invoiceId       String
+  deliveryNoteId  String?
+  ewayBillId      String?
+  matchScore      Float    // 0.0 to 1.0
+  status          String   // MATCHED, PARTIAL, MISMATCH
+  discrepancies   String?  // JSON array of discrepancy details
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  invoice         Invoice  @relation(fields: [invoiceId], references: [id])
+
+  @@index([status])
+}
