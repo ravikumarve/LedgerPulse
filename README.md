@@ -11,10 +11,12 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/status-alpha-yellow" alt="Status">
+  <img src="https://img.shields.io/badge/status-beta-green" alt="Status">
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="License">
   <img src="https://img.shields.io/badge/node-20%2B-brightgreen" alt="Node">
   <img src="https://img.shields.io/badge/TypeScript-5.6-blue" alt="TypeScript">
+  <img src="https://img.shields.io/badge/tests-35%2F35-green" alt="Tests">
+  <img src="https://img.shields.io/badge/3--way_matching-live-brightgreen" alt="3-Way">
 </p>
 
 ---
@@ -23,9 +25,9 @@
 
 LedgerPulse is a **complete, end-to-end tested SaaS boilerplate** for supply chain financial reconciliation. It automates the painful manual process of matching invoices against physical delivery notes and government tax logs — preventing overpayments, catching discrepancies, and keeping compliance in check.
 
-**Built for:** Manufacturers, distributors, and logistics hubs operating across complex invoice/tax environments.
+**Built for:** Manufacturers, distributors, and logistics hubs operating across complex invoice/tax environments (Indian GST ecosystem ready).
 
-**Sell it as:** A white-label SaaS, deploy it for a single client, or use it as the foundation for your own fintech product.
+**Current status:** Phases 0–3 complete. Core ingestion → OCR → 3-way matching pipeline functional and tested. Ready for frontend dashboard + approval workflow (Phase 4).
 
 ---
 
@@ -36,24 +38,23 @@ LedgerPulse is a **complete, end-to-end tested SaaS boilerplate** for supply cha
 | Feature | Description |
 |---------|-------------|
 | **Multi-Format Ingestion** | Accept invoices via email (IMAP), file upload (PDF/images), or manual entry |
-| **OCR Extraction** | Parse unstructured documents using Tesseract/EasyOCR — extracts line items, tax components, totals |
-| **3-Way Matching** | Automatically cross-references Invoices × Delivery Notes × E-Way Bill logs |
-| **Discrepancy Detection** | Flags price inflation, quantity mismatches, duplicate invoices, tax credit mismatches |
-| **E-Way Bill Sync** | Integration with Indian GST portal for automatic tax log ingestion |
-| **Approval Workflow** | Multi-level approval routing for flagged discrepancies |
-| **Dispute Generator** | Pre-populated vendor reconciliation statements and formal dispute notices |
-| **Dashboard** | Real-time match rates, discrepancy alerts, and leakage tracking |
+| **OCR Extraction** | Parse unstructured documents using Tesseract.js — extracts line items, tax components, totals |
+| **3-Way Matching** | Automatically cross-references Invoices × Delivery Notes × E-Way Bill logs with configurable tolerances |
+| **Field-Level Discrepancy Detection** | Flags price inflation, quantity mismatches, duplicate invoices, GSTIN mismatches, expired E-Way Bills |
+| **E-Way Bill Sync** | Stub integration with Indian GST portal for automatic tax log ingestion (+ manual CRUD) |
+| **Match Scoring Engine** | Composite 0.0–1.0 score across three dimensions: INV↔DN (50%), INV↔EWB tax/GSTIN (30%), DN↔EWB logistics (20%) |
+| **Tax Compliance Checks** | GSTIN mismatch detection, total value tolerance, EWB expiry alerts, vehicle cross-reference |
 
 ### Technical
 
 | Feature | Description |
 |---------|-------------|
-| **RESTful API** | Fully documented API with pagination, filtering, and webhook support |
-| **TypeScript Everywhere** | End-to-end type safety from database to frontend |
-| **SQLite → PostgreSQL** | Zero-config SQLite for development, production-ready PostgreSQL |
-| **E2E Tested** | Backend integration tests + frontend component tests — every feature covered |
-| **Docker Ready** | Docker Compose for local dev, production deployment guides |
-| **Multi-Tenant Ready** | JWT auth with role-based access (Admin, Viewer, Approver) |
+| **RESTful API** | Fully documented API with pagination, filtering, and standard error envelopes |
+| **TypeScript Everywhere** | End-to-end type safety from database to frontend — 0 TS errors |
+| **SQLite → PostgreSQL** | Zero-config SQLite for development, production-ready PostgreSQL via Prisma |
+| **E2E Tested** | 35 backend integration tests covering all routes, matching engine, and edge cases |
+| **Express + Helmet + Rate Limit** | Security-hardened API with CORS, Helmet headers, and rate limiting |
+| **Zod Validation** | Request validation on all mutation endpoints with structured error responses |
 
 ---
 
@@ -94,6 +95,37 @@ npm run dev
 
 ---
 
+## 🌐 API Endpoints
+
+All endpoints are available at `http://localhost:3001/api/`.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Health check |
+| `GET` | `/vendors` | List vendors |
+| `POST` | `/vendors` | Create vendor |
+| `GET` | `/vendors/:id` | Vendor detail |
+| `PUT` | `/vendors/:id` | Update vendor |
+| `DELETE` | `/vendors/:id` | Soft-delete vendor |
+| `GET` | `/invoices` | List invoices (filterable) |
+| `POST` | `/invoices` | Create invoice manually |
+| `POST` | `/invoices/upload` | Upload invoice + OCR |
+| `GET` | `/invoices/:id` | Invoice detail with linked docs |
+| `PUT` | `/invoices/:id/status` | Update status |
+| `POST` | `/invoices/:id/reprocess` | Re-run OCR |
+| `GET` | `/delivery-notes` | List delivery notes |
+| `POST` | `/delivery-notes` | Create delivery note |
+| `POST` | `/delivery-notes/upload` | Upload DN + OCR |
+| `GET` | `/delivery-notes/:id` | DN detail |
+| `PUT` | `/delivery-notes/:id/status` | Update status |
+| `GET` | `/eway-bills` | List E-Way Bills |
+| `POST` | `/eway-bills` | Create E-Way Bill |
+| `POST` | `/eway-bills/sync` | Sync from GST portal (mock) |
+| `GET` | `/eway-bills/:id` | EWB detail |
+| `POST` | `/matching/run` | Run 2-way or 3-way matching |
+| `GET` | `/matching/results` | List match results |
+| `GET` | `/matching/results/:id` | Match result detail |
+
 ## 📁 Project Structure
 
 ```
@@ -101,9 +133,10 @@ ledgerpulse/
 ├── packages/
 │   ├── backend/            # Express API server
 │   │   ├── src/
-│   │   │   ├── routes/     # Route handlers
-│   │   │   ├── services/   # Business logic
-│   │   │   └── middleware/  # Auth, validation, error handling
+│   │   │   ├── routes/     # Route handlers (vendors, invoices, DNs, EWBs, matching)
+│   │   │   ├── services/   # Business logic (OCR, extraction, email, matching)
+│   │   │   ├── middleware/  # Upload, validation, error handling
+│   │   │   └── types/      # Type declarations (multer, express-augment)
 │   │   ├── prisma/         # Schema + migrations + seed
 │   │   └── tests/          # Integration tests
 │   └── frontend/           # React SPA
@@ -161,12 +194,12 @@ npm run db:push      # Push schema changes (dev)
 
 Every feature ships with tests. No exceptions.
 
-- **Backend:** Integration tests hitting real SQLite via Supertest
-- **Frontend:** Component tests with Vitest + React Testing Library
+- **Backend:** 35 integration tests hitting real SQLite via Supertest — covers all routes + matching engine edge cases
+- **Frontend:** Component tests with Vitest + React Testing Library *(coming in Phase 4)*
 - **Coverage target:** 80%+ for business logic, 100% for critical paths
 
 ```bash
-# Run the full suite (~30s)
+# Run the full suite (~10s)
 npm run test
 ```
 
@@ -239,10 +272,10 @@ See [Security Architecture](docs/SECURITY.md) for the full threat model.
 | Phase | Focus | Status |
 |-------|-------|--------|
 | **0** | Monorepo scaffold, Prisma schema, health endpoint | ✅ Done |
-| **1** | Document ingestion API + OCR pipeline | 🔜 Next |
-| **2** | 2-way matching (Invoice ↔ Delivery Note) | 🔜 |
-| **3** | E-Way Bill integration + 3-way matching | 🔜 |
-| **4** | Discrepancy dashboard + approval workflow | 🔜 |
+| **1** | Document ingestion API + OCR pipeline | ✅ Done |
+| **2** | 2-way matching (Invoice ↔ Delivery Note) | ✅ Done |
+| **3** | E-Way Bill integration + 3-way matching | ✅ Done |
+| **4** | Discrepancy dashboard + approval workflow | 🔜 Next |
 | **5** | Auth, multi-tenant, billing (Gumroad) | 🔜 |
 | **6** | Production deployment + documentation polish | 🔜 |
 
