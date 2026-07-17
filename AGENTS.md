@@ -67,6 +67,18 @@ LedgerPulse/
 - **Build Status:** No code changes — pure documentation phase
 - **Next Turn Directive:** Proceed to Phase 1 implementation — Document Ingestion API (email + upload) + OCR pipeline
 
+### [2026-07-16 22:30] — Phase 1 Stabilization: Test Isolation + TS Clean Build
+- **State:** Success
+- **MCP Data Used:** code_tree (AST analysis for type conflict debugging), grep_app (pattern research for local multer types)
+- **Agents Deployed:** Orchestrator (direct execution)
+- **Architectural Decision:**
+  1. **Test isolation**: Each test suite now cleans tables in FK order (`matchResult → eWayBill → deliveryNote → invoice → vendor`) before seeding fresh data — eliminates shared SQLite state collisions
+  2. **Express v4/v5 type conflict fixed**: Removed `@types/multer` (pulled in `@types/express@5.0.6` as transitive dep). Created local `src/types/multer.d.ts` with `declare function + declare namespace` pattern and `src/types/express-augment.d.ts` for `Express.Request.file` augmentation. Root `node_modules/@types/express` now correctly resolves to v4.17.25
+  3. **Removed tsconfig `declaration: true`** — backend is a server, not a library; avoids MulterInstance naming issues in emitted .d.ts
+- **Key Fixes:** FK cascade on test cleanup → 19/19 tests pass. 11 TS errors → 0 TS errors (both `node` and `NodeNext` moduleResolution)
+- **Build Status:** `npx tsc --noEmit` ✅ | Tests 19/19 ✅ | Seed script ✅
+- **Next Turn Directive:** Begin Phase 2 — 2-way matching engine (invoice ↔ delivery note), or start E-Way Bill / tax log ingestion for 3-way matching
+
 ### [2026-07-16] - Phase 0: Monorepo Scaffold Complete
 - **State:** Success
 - **MCP Data Used:** glob (file discovery), skill (project-bootstrap), websearch (market validation)

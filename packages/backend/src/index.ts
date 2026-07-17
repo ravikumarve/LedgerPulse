@@ -4,6 +4,9 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { PrismaClient } from "@prisma/client";
 import healthRouter from "./routes/health";
+import vendorsRouter from "./routes/vendors";
+import invoicesRouter from "./routes/invoices";
+import deliveryNotesRouter from "./routes/delivery-notes";
 
 export const prisma = new PrismaClient();
 
@@ -27,6 +30,9 @@ app.use(
 
 // Routes
 app.use("/api/health", healthRouter);
+app.use("/api/vendors", vendorsRouter);
+app.use("/api/invoices", invoicesRouter);
+app.use("/api/delivery-notes", deliveryNotesRouter);
 
 // Global error handler
 app.use(
@@ -39,6 +45,7 @@ app.use(
     console.error("Unhandled error:", err);
     res.status(500).json({
       error: "Internal server error",
+      code: "INTERNAL_ERROR",
       message:
         process.env.NODE_ENV === "development" ? err.message : undefined,
     });
@@ -49,6 +56,24 @@ app.use(
 if (process.env.NODE_ENV !== "test") {
   app.listen(PORT, () => {
     console.log(`🚀 LedgerPulse API running on http://localhost:${PORT}`);
+    console.log(`📋 Routes:`);
+    console.log(`   GET  /api/health`);
+    console.log(`   GET  /api/vendors`);
+    console.log(`   POST /api/vendors`);
+    console.log(`   GET  /api/vendors/:id`);
+    console.log(`   PUT  /api/vendors/:id`);
+    console.log(`   DEL  /api/vendors/:id`);
+    console.log(`   GET  /api/invoices`);
+    console.log(`   POST /api/invoices/upload`);
+    console.log(`   POST /api/invoices`);
+    console.log(`   GET  /api/invoices/:id`);
+    console.log(`   PUT  /api/invoices/:id/status`);
+    console.log(`   POST /api/invoices/:id/reprocess`);
+    console.log(`   GET  /api/delivery-notes`);
+    console.log(`   POST /api/delivery-notes/upload`);
+    console.log(`   POST /api/delivery-notes`);
+    console.log(`   GET  /api/delivery-notes/:id`);
+    console.log(`   PUT  /api/delivery-notes/:id/status`);
   });
 }
 

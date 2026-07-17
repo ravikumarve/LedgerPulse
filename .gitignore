@@ -8,3 +8,5 @@ build/
 *.log
 coverage/
 .turbo/
+uploads/
+packages/backend/uploads/
