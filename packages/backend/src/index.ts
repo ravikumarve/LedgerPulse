@@ -7,6 +7,7 @@ import healthRouter from "./routes/health";
 import vendorsRouter from "./routes/vendors";
 import invoicesRouter from "./routes/invoices";
 import deliveryNotesRouter from "./routes/delivery-notes";
+import matchingRouter from "./routes/matching";
 
 export const prisma = new PrismaClient();
 
@@ -33,6 +34,7 @@ app.use("/api/health", healthRouter);
 app.use("/api/vendors", vendorsRouter);
 app.use("/api/invoices", invoicesRouter);
 app.use("/api/delivery-notes", deliveryNotesRouter);
+app.use("/api/matching", matchingRouter);
 
 // Global error handler
 app.use(
@@ -74,6 +76,9 @@ if (process.env.NODE_ENV !== "test") {
     console.log(`   POST /api/delivery-notes`);
     console.log(`   GET  /api/delivery-notes/:id`);
     console.log(`   PUT  /api/delivery-notes/:id/status`);
+    console.log(`   POST /api/matching/run`);
+    console.log(`   GET  /api/matching/results`);
+    console.log(`   GET  /api/matching/results/:id`);
   });
 }
 
