@@ -78,9 +78,11 @@ if (process.env.NODE_ENV !== "test") {
     console.log(`   POST /api/delivery-notes`);
     console.log(`   GET  /api/delivery-notes/:id`);
     console.log(`   PUT  /api/delivery-notes/:id/status`);
-    console.log(`   POST /api/matching/run`);
-    console.log(`   GET  /api/matching/results`);
-    console.log(`   GET  /api/matching/results/:id`);
+   console.log(`   POST /api/matching/run`);
+   console.log(`   GET  /api/matching/stats`);
+   console.log(`   GET  /api/matching/results`);
+   console.log(`   GET  /api/matching/results/:id`);
+   console.log(`   PUT  /api/matching/results/:id/resolve`);
     console.log(`   GET  /api/eway-bills`);
     console.log(`   POST /api/eway-bills`);
     console.log(`   POST /api/eway-bills/sync`);

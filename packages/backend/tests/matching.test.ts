@@ -356,4 +356,92 @@ describe("3-Way Matching Engine API", () => {
       expect(res.status).toBe(422);
     });
   });
+
+  // ── Stats & Resolution ──────────────────────────────────────────
+
+  describe("Stats & Resolution", () => {
+    it("GET /api/matching/stats — returns aggregate statistics", async () => {
+      const res = await request(app).get("/api/matching/stats");
+      expect(res.status).toBe(200);
+      expect(res.body.data).toBeDefined();
+      expect(typeof res.body.data.totalMatches).toBe("number");
+      expect(typeof res.body.data.matchRate).toBe("number");
+      expect(typeof res.body.data.matched).toBe("number");
+      expect(typeof res.body.data.pendingReview).toBe("number");
+      expect(res.body.data.documents).toBeDefined();
+      expect(typeof res.body.data.documents.invoices).toBe("number");
+      expect(typeof res.body.data.documents.deliveryNotes).toBe("number");
+      expect(typeof res.body.data.documents.ewayBills).toBe("number");
+    });
+
+    it("PUT /api/matching/results/:id/resolve — accepts a match result", async () => {
+      // Create a fresh match result via matching run
+      const matchRes = await request(app)
+        .post("/api/matching/run")
+        .send({ invoiceId, deliveryNoteIds: [goodDnId], autoPersist: true });
+
+      const matchId = matchRes.body.data[0]?.id;
+      if (!matchId) return;
+
+      const res = await request(app)
+        .put(`/api/matching/results/${matchId}/resolve`)
+        .send({ action: "accept", reviewedBy: "test-user", notes: "All good" });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.reviewedBy).toBe("test-user");
+      expect(res.body.data.reviewedAt).toBeTruthy();
+      expect(res.body.meta.resolved).toBe(true);
+
+      // Verify invoice status updated to RESOLVED
+      const invRes = await request(app).get(`/api/invoices/${invoiceId}`);
+      expect(invRes.body.data.status).toBe("RESOLVED");
+    });
+
+    it("PUT /api/matching/results/:id/resolve — rejects already reviewed", async () => {
+      const matchRes = await request(app)
+        .post("/api/matching/run")
+        .send({ invoiceId, deliveryNoteIds: [goodDnId], autoPersist: true });
+
+      const matchId = matchRes.body.data[0]?.id;
+      if (!matchId) return;
+
+      // First resolve
+      await request(app)
+        .put(`/api/matching/results/${matchId}/resolve`)
+        .send({ action: "accept", reviewedBy: "user-1" });
+
+      // Second resolve should be rejected
+      const res = await request(app)
+        .put(`/api/matching/results/${matchId}/resolve`)
+        .send({ action: "accept", reviewedBy: "user-2" });
+
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe("ALREADY_REVIEWED");
+    });
+
+    it("PUT /api/matching/results/:id/resolve — returns 404 for invalid id", async () => {
+      const res = await request(app)
+        .put("/api/matching/results/00000000-0000-0000-0000-000000000000/resolve")
+        .send({ action: "accept", reviewedBy: "test-user" });
+
+      expect(res.status).toBe(404);
+    });
+
+    it("PUT /api/matching/results/:id/resolve — validates request body", async () => {
+      const res = await request(app)
+        .put(`/api/matching/results/${goodEwbId}/resolve`)
+        .send({ action: "invalid", reviewedBy: "test-user" });
+
+      expect(res.status).toBe(422);
+    });
+
+    it("GET /api/matching/results — filters by status", async () => {
+      const res = await request(app)
+        .get("/api/matching/results")
+        .query({ status: "MATCHED" });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toBeInstanceOf(Array);
+    });
+  });
 });

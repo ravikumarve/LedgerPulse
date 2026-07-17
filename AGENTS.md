@@ -67,6 +67,53 @@ LedgerPulse/
 - **Build Status:** No code changes — pure documentation phase
 - **Next Turn Directive:** Proceed to Phase 1 implementation — Document Ingestion API (email + upload) + OCR pipeline
 
+### [2026-07-17 17:45] — Phase 4: Discrepancy Dashboard + Approval Workflow
+- **State:** Success
+- **MCP Data Used:** code_tree (AST analysis for frontend structure), direct file reads (existing matching routes/services)
+- **Agents Deployed:** Orchestrator (direct execution)
+- **Architectural Decision:**
+  1. **Backend additions**: `GET /api/matching/stats` (aggregate stats — matchRate, pendingReview, document counts), `PUT /api/matching/results/:id/resolve` (approval workflow with accept/reject, idempotency check via ALREADY_REVIEWED 409).
+  2. **Frontend SPA upgrade**: Added Layout component with sidebar navigation (Dashboard, Invoices, Discrepancies), `useApi` hook for typed API calls (getStats, getMatchResults, getMatchResult, resolveMatchResult).
+  3. **Dashboard**: Live stats from `/api/matching/stats` with 4 stat cards + 3 mini progress bars (matched/partial/mismatched). Skeleton loading + empty state.
+  4. **Discrepancies page**: Filterable table (status: All/MATCHED/PARTIAL/MISMATCH), pagination, click-to-select row opens detail panel below. Detail panel shows document refs, score badges, full discrepancy list with severity coloring, and Accept/Reject buttons with confirmation feedback.
+  5. **Resolve flow**: Accept → marks match as reviewed, updates documents to RESOLVED. Reject → registers review without changing documents. 409 on double-review.
+- **Key Outputs:**
+  - `packages/backend/src/routes/matching.ts` — added `/stats` and `results/:id/resolve` routes
+  - `packages/backend/tests/matching.test.ts` — 6 new tests (stats, resolve accept, resolve duplicate, resolve 404, resolve validation, status filter)
+  - `packages/frontend/src/hooks/useApi.ts` — typed API client with interfaces
+  - `packages/frontend/src/components/Layout.tsx` — sidebar navigation shell
+  - `packages/frontend/src/pages/Dashboard.tsx` — live stats dashboard
+  - `packages/frontend/src/pages/Discrepancies.tsx` — full discrepancy table + detail + approval UI
+  - `packages/frontend/src/App.tsx` — updated routes with Layout
+- **Build Status:** Backend `npx tsc --noEmit` ✅ | Backend 41/41 tests ✅ | Frontend `npx tsc --noEmit` ✅ | Frontend 1/1 tests ✅
+- **Next Turn Directive:** Begin Phase 5 — Auth, multi-tenant, billing (Gumroad/LemonSqueezy), or Phase 6 — Production deployment guide + Docker Compose
+
+### [2026-07-17 12:30] — Phase 3: E-Way Bill Ingestion + 3-Way Matching
+- **State:** Success
+- **MCP Data Used:** grep_app (schema design), direct file reads (existing routes/services)
+- **Agents Deployed:** Orchestrator (direct execution)
+- **Architectural Decision:**
+  1. **3-way scoring**: INV↔DN (50%) + INV↔EWB tax/GSTIN (30%) + DN↔EWB logistics (20%). Composite weighted by available document pairs.
+  2. **EWB auto-scope**: Scoped by vendor GSTIN (fromGstin) when not explicitly specified — prevents matching against unrelated EWBs.
+  3. **Tax checks**: GSTIN match (vendor vs fromGstin), total value tolerance (amountTolerancePercent), EWB expiry detection.
+  4. **Sync stub**: POST /api/eway-bills/sync with 30-day range limit, generates sample EWBs for dev/testing.
+- **Key Outputs:** `src/routes/eway-bills.ts` (5 endpoints), `src/services/matching.ts` (upgraded to 3-way), 16 new/updated tests
+- **Build Status:** `npx tsc --noEmit` ✅ | Tests 35/35 ✅ | Pushed to `main`
+- **Next Turn Directive:** Begin Phase 4 — Discrepancy dashboard + approval workflow UI
+
+### [2026-07-16 23:00] — Phase 2: 2-Way Matching Engine (Invoice ↔ Delivery Note)
+- **State:** Success
+- **MCP Data Used:** grep_app (schema pattern research), direct file reads (existing routes/docs)
+- **Agents Deployed:** Orchestrator (direct execution)
+- **Architectural Decision:**
+  1. **Matching algorithm**: Two-phase scoring — header match (vendor, date, amount) at 40% weight, line-item match (qty, price) at 60% weight. Composite score classified as MATCHED ≥0.85, PARTIAL ≥0.50, MISMATCH <0.50. Computes invoice total qty from line items (not totalAmount) for fair comparison.
+  2. **Schema**: Added `DeliveryNote.matchResults` back-ref and `MatchResult.deliveryNote` relation to Prisma schema.
+  3. **API**: `POST /api/matching/run` with optional `autoPersist` flag, `GET /api/matching/results` with filters, `GET /api/matching/results/:id` with full discrepancy detail.
+  4. **Auto-link**: When no deliveryNoteIds provided, service auto-selects from same vendor with PROCESSED/PENDING status.
+- **Key Outputs:** `src/services/matching.ts` (matching engine), `src/routes/matching.ts` (3 endpoints), `tests/matching.test.ts` (8 integration tests)
+- **Build Status:** `npx tsc --noEmit` ✅ | Tests 27/27 ✅ | Pushed to `main`
+- **Next Turn Directive:** Begin Phase 3 — E-Way Bill / tax log ingestion + 3-way matching
+
 ### [2026-07-16 22:30] — Phase 1 Stabilization: Test Isolation + TS Clean Build
 - **State:** Success
 - **MCP Data Used:** code_tree (AST analysis for type conflict debugging), grep_app (pattern research for local multer types)
