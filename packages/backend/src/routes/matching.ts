@@ -11,16 +11,18 @@ const router = Router();
 const runMatchSchema = z.object({
   invoiceId: z.string().uuid(),
   deliveryNoteIds: z.array(z.string().uuid()).optional(),
+  ewayBillIds: z.array(z.string().uuid()).optional(),
   autoPersist: z.boolean().optional().default(true),
 });
 
 // ── Routes ──────────────────────────────────────────────────────────
 
 /**
- * POST /api/matching/run — Trigger 2-way matching for invoice ↔ delivery notes
+ * POST /api/matching/run — Trigger 2-way or 3-way matching
+ * Matches invoice against delivery notes and/or E-Way Bills.
  */
 router.post("/run", validate(runMatchSchema), async (req: Request, res: Response) => {
-  const { invoiceId, deliveryNoteIds, autoPersist } = req.body;
+  const { invoiceId, deliveryNoteIds, ewayBillIds, autoPersist } = req.body;
 
   // Verify invoice exists
   const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId } });
@@ -29,33 +31,34 @@ router.post("/run", validate(runMatchSchema), async (req: Request, res: Response
     return;
   }
 
-  // Run matching
-  const results = await runMatch({
-    invoiceId,
-    deliveryNoteIds,
-  });
+  // Run matching (3-way)
+  const results = await runMatch({ invoiceId, deliveryNoteIds, ewayBillIds });
 
   // Optionally persist to database
   const persisted = autoPersist
     ? await Promise.all(
-        results.map((r, i) =>
+        results.map((r) =>
           persistMatchResult(
             invoiceId,
-            deliveryNoteIds?.[i] ?? null,
+            (r as any)._dnId ?? null,
+            (r as any)._ewbId ?? null,
             r
-          ).catch(() => null) // continue if one fails
+          ).catch(() => null)
         )
       )
     : null;
 
+  // Strip internal tracking fields from output
+  const output = results.map((r, i) => {
+    const { _dnId, _ewbId, ...clean } = r as any;
+    return { ...clean, id: persisted?.[i]?.id ?? null };
+  });
+
   res.json({
-    data: results.map((r, i) => ({
-      ...r,
-      id: persisted?.[i]?.id ?? null,
-    })),
+    data: output,
     meta: {
       invoiceId,
-      deliveryNoteCount: results.length,
+      matchCount: results.length,
       persisted: autoPersist,
     },
   });
@@ -80,6 +83,7 @@ router.get("/results", async (req: Request, res: Response) => {
       include: {
         invoice: { select: { id: true, invoiceNumber: true, totalAmount: true } },
         deliveryNote: { select: { id: true, deliveryNoteNumber: true } },
+        ewayBill: { select: { id: true, ewayBillNumber: true, totalValue: true } },
       },
       skip: (page - 1) * perPage,
       take: perPage,
@@ -102,15 +106,12 @@ router.get("/results/:id", async (req: Request, res: Response) => {
     where: { id: req.params.id },
     include: {
       invoice: {
-        include: {
-          vendor: { select: { id: true, name: true, gstin: true } },
-        },
+        include: { vendor: { select: { id: true, name: true, gstin: true } } },
       },
       deliveryNote: {
-        include: {
-          vendor: { select: { id: true, name: true } },
-        },
+        include: { vendor: { select: { id: true, name: true } } },
       },
+      ewayBill: true,
     },
   });
 
@@ -119,14 +120,10 @@ router.get("/results/:id", async (req: Request, res: Response) => {
     return;
   }
 
-  // Parse stored discrepancies JSON
   const discrepancies = result.discrepancies ? JSON.parse(result.discrepancies) : [];
 
   res.json({
-    data: {
-      ...result,
-      discrepancies,
-    },
+    data: { ...result, discrepancies },
   });
 });
 

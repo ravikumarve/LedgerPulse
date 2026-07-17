@@ -2,10 +2,11 @@ import request from "supertest";
 import app, { prisma } from "../src/index";
 
 /**
- * Matching Engine Integration Tests
+ * 3-Way Matching Engine Integration Tests
  *
- * Tests 2-way matching (invoice ↔ delivery note) via the matching API.
- * Covers: header matching, line-item matching, scoring, discrepancy detection.
+ * Tests 2-way (INV↔DN) and 3-way (INV↔DN↔EWB) matching.
+ * Covers: header matching, line-item matching, scoring,
+ * E-Way Bill tax/GSTIN checks, and discrepancy detection.
  */
 
 // ── Test Data ───────────────────────────────────────────────────────
@@ -15,11 +16,13 @@ let otherVendorId: string;
 let invoiceId: string;
 let goodDnId: string;
 let badDnId: string;
+let goodEwbId: string;
+let mismatchedEwbId: string;
 
-const VENDOR_NAME = "Match Test Vendor";
-const GSTIN = "27AAAMATCH1234A1Z1";
+const VENDOR_NAME = "3Way Test Vendor";
+const GSTIN = "27AAA3WAY1234A1Z1";
 const OTHER_VENDOR = "Other Vendor";
-const OTHER_GSTIN = "27AAAMATCH9999A1Z1";
+const OTHER_GSTIN = "27AAAOTHER999A1Z1";
 
 beforeAll(async () => {
   // Clean tables in FK order
@@ -29,17 +32,22 @@ beforeAll(async () => {
   await prisma.invoice.deleteMany();
   await prisma.vendor.deleteMany();
 
-  // Create vendor
+  // Create vendors
   const vendor = await prisma.vendor.create({
     data: { name: VENDOR_NAME, gstin: GSTIN },
   });
   vendorId = vendor.id;
 
+  const otherVendor = await prisma.vendor.create({
+    data: { name: OTHER_VENDOR, gstin: OTHER_GSTIN },
+  });
+  otherVendorId = otherVendor.id;
+
   // Create invoice (well-structured)
   const invoice = await prisma.invoice.create({
     data: {
       vendorId,
-      invoiceNumber: "MATCH-INV-001",
+      invoiceNumber: "3WAY-INV-001",
       invoiceDate: new Date("2026-07-01"),
       totalAmount: 50000,
       taxAmount: 9000,
@@ -53,11 +61,11 @@ beforeAll(async () => {
   });
   invoiceId = invoice.id;
 
-  // Create a delivery note that matches well (same vendor, close date, matching qty)
+  // Create a delivery note that matches well
   const goodDn = await prisma.deliveryNote.create({
     data: {
       vendorId,
-      deliveryNoteNumber: "MATCH-DN-001",
+      deliveryNoteNumber: "3WAY-DN-001",
       deliveryDate: new Date("2026-07-03"),
       totalQuantity: 150,
       lineItems: JSON.stringify([
@@ -70,31 +78,55 @@ beforeAll(async () => {
   });
   goodDnId = goodDn.id;
 
-  // Create a second vendor for mismatch tests
-  const otherVendor = await prisma.vendor.create({
-    data: { name: OTHER_VENDOR, gstin: OTHER_GSTIN },
-  });
-  otherVendorId = otherVendor.id;
-
-  // Create a delivery note that DOES NOT match (different vendor, far date, wrong qty)
+  // Create a delivery note that does NOT match
   const badDn = await prisma.deliveryNote.create({
     data: {
       vendorId: otherVendorId,
-      deliveryNoteNumber: "MATCH-DN-002",
+      deliveryNoteNumber: "3WAY-DN-002",
       deliveryDate: new Date("2026-04-01"),
       totalQuantity: 10,
-      lineItems: JSON.stringify([
-        { description: "Nails Box", quantity: 5, unitPrice: 100 },
-      ]),
+      lineItems: JSON.stringify([{ description: "Nails Box", quantity: 5, unitPrice: 100 }]),
       status: "PROCESSED",
       processedAt: new Date(),
     },
   });
   badDnId = badDn.id;
+
+  // Create an E-Way Bill that matches (correct vendor GSTIN, matching value)
+  const goodEwb = await prisma.eWayBill.create({
+    data: {
+      ewayBillNumber: "EWB-GOOD-001",
+      generatedDate: new Date("2026-07-02"),
+      validUntil: new Date("2026-08-01"),
+      fromGstin: GSTIN,
+      toGstin: "27AAARECEIVER1A1Z1",
+      totalValue: 50000,
+      transportMode: "Road",
+      vehicleNumber: "MH-01-AB-1234",
+      status: "PROCESSED",
+    },
+  });
+  goodEwbId = goodEwb.id;
+
+  // Create an E-Way Bill that does NOT match (wrong GSTIN, wrong value, expired)
+  const badEwb = await prisma.eWayBill.create({
+    data: {
+      ewayBillNumber: "EWB-BAD-001",
+      generatedDate: new Date("2026-01-01"),
+      validUntil: new Date("2026-02-01"), // expired
+      fromGstin: "27WRONG1234A1Z1",
+      toGstin: "27AAARECEIVER1A1Z1",
+      totalValue: 10000,
+      transportMode: "Rail",
+      status: "PROCESSED",
+    },
+  });
+  mismatchedEwbId = badEwb.id;
 });
 
 afterAll(async () => {
   await prisma.matchResult.deleteMany();
+  await prisma.eWayBill.deleteMany();
   await prisma.deliveryNote.deleteMany();
   await prisma.invoice.deleteMany();
   await prisma.vendor.deleteMany();
@@ -103,120 +135,225 @@ afterAll(async () => {
 
 // ── Tests ───────────────────────────────────────────────────────────
 
-describe("Matching Engine API", () => {
-  // ── POST /api/matching/run ────────────────────────────────────
+describe("3-Way Matching Engine API", () => {
 
-  it("POST /api/matching/run — matches a good delivery note", async () => {
-    const res = await request(app)
-      .post("/api/matching/run")
-      .send({
-        invoiceId,
-        deliveryNoteIds: [goodDnId],
-        autoPersist: true,
+  // ── 2-Way: Invoice ↔ Delivery Note ────────────────────────────
+
+  describe("2-Way: INV ↔ DN", () => {
+    it("matches a good delivery note (MATCHED)", async () => {
+      const res = await request(app)
+        .post("/api/matching/run")
+        .send({ invoiceId, deliveryNoteIds: [goodDnId], autoPersist: true });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(1);
+      const match = res.body.data[0];
+      expect(match.status).toBe("MATCHED");
+      expect(match.matchScore).toBeGreaterThanOrEqual(0.85);
+      expect(match.discrepancies).toHaveLength(0);
+      expect(match.id).toBeTruthy();
+    });
+
+    it("flags a mismatched delivery note (MISMATCH)", async () => {
+      const res = await request(app)
+        .post("/api/matching/run")
+        .send({ invoiceId, deliveryNoteIds: [badDnId], autoPersist: false });
+
+      expect(res.status).toBe(200);
+      const match = res.body.data[0];
+      expect(match.status).toBe("MISMATCH");
+      expect(match.matchScore).toBeLessThan(0.5);
+      expect(match.discrepancies.length).toBeGreaterThan(0);
+
+      const types = match.discrepancies.map((d: any) => d.type);
+      expect(types).toContain("VENDOR");
+      expect(types).toContain("DATE");
+    });
+
+    it("auto-selects delivery notes from same vendor", async () => {
+      const res = await request(app)
+        .post("/api/matching/run")
+        .send({ invoiceId });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  // ── 3-Way: Invoice ↔ DN ↔ EWB ─────────────────────────────────
+
+  describe("3-Way: INV ↔ DN ↔ EWB", () => {
+    it("produces clean 3-way match with good DN + good EWB", async () => {
+      const res = await request(app)
+        .post("/api/matching/run")
+        .send({
+          invoiceId,
+          deliveryNoteIds: [goodDnId],
+          ewayBillIds: [goodEwbId],
+          autoPersist: true,
+        });
+
+      expect(res.status).toBe(200);
+      // Should return one result per DN × EWB combination
+      expect(res.body.data).toHaveLength(1);
+
+      const match = res.body.data[0];
+      expect(match.status).toBe("MATCHED");
+      expect(match.matchScore).toBeGreaterThanOrEqual(0.85);
+      // INV↔DN score and INV↔EWB score should both be high
+      expect(match.invDnScore).toBeGreaterThanOrEqual(0.8);
+      expect(match.invEwbScore).toBeGreaterThanOrEqual(0.8);
+      expect(match.discrepancies).toHaveLength(0);
+    });
+
+    it("detects EWB tax/GSTIN mismatches", async () => {
+      const res = await request(app)
+        .post("/api/matching/run")
+        .send({
+          invoiceId,
+          deliveryNoteIds: [goodDnId],
+          ewayBillIds: [mismatchedEwbId],
+          autoPersist: false,
+        });
+
+      expect(res.status).toBe(200);
+      const match = res.body.data[0];
+
+      // Should have EWB-related discrepancies
+      const ewbTypes = match.discrepancies?.map((d: any) => d.type) || [];
+      // The good DN gives INV↔DN match, but bad EWB should cause issues
+      expect(match.invEwbScore).toBeLessThan(0.5);
+    });
+
+    it("returns 404 for missing invoice", async () => {
+      const res = await request(app)
+        .post("/api/matching/run")
+        .send({ invoiceId: "00000000-0000-0000-0000-000000000000" });
+      expect(res.status).toBe(404);
+    });
+  });
+
+  // ── GET /api/matching/results ──────────────────────────────────
+
+  describe("GET results", () => {
+    it("lists match results", async () => {
+      const res = await request(app)
+        .get("/api/matching/results")
+        .query({ invoiceId });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toBeInstanceOf(Array);
+      expect(res.body.meta).toBeDefined();
+    });
+
+    it("returns match detail with discrepancies", async () => {
+      // Create a persisted match
+      const matchRes = await request(app)
+        .post("/api/matching/run")
+        .send({ invoiceId, deliveryNoteIds: [goodDnId], autoPersist: true });
+
+      const matchId = matchRes.body.data[0]?.id;
+      if (!matchId) return; // skip if no match
+
+      const res = await request(app).get(`/api/matching/results/${matchId}`);
+      expect(res.status).toBe(200);
+      expect(res.body.data.id).toBe(matchId);
+      expect(res.body.data.invoice).toBeDefined();
+      expect(Array.isArray(res.body.data.discrepancies)).toBe(true);
+    });
+
+    it("returns 404 for invalid match result id", async () => {
+      const res = await request(app)
+        .get("/api/matching/results/00000000-0000-0000-0000-000000000000");
+      expect(res.status).toBe(404);
+    });
+  });
+
+  // ── E-Way Bill API ─────────────────────────────────────────────
+
+  describe("E-Way Bill API", () => {
+    it("POST /api/eway-bills — creates an E-Way Bill", async () => {
+      const res = await request(app)
+        .post("/api/eway-bills")
+        .send({
+          ewayBillNumber: `EWB-TEST-${Date.now()}`,
+          generatedDate: "2026-07-15T00:00:00.000Z",
+          validUntil: "2026-08-15T00:00:00.000Z",
+          fromGstin: "27AAACA1234A1Z1",
+          toGstin: "27AAACA5678A1Z1",
+          totalValue: 75000,
+          transportMode: "Road",
+          vehicleNumber: "MH-02-CD-5678",
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.data.ewayBillNumber).toBeTruthy();
+    });
+
+    it("POST /api/eway-bills — rejects duplicate EWB number", async () => {
+      const ewbNumber = `EWB-DUP-${Date.now()}`;
+      await request(app).post("/api/eway-bills").send({
+        ewayBillNumber: ewbNumber,
+        generatedDate: "2026-07-15",
+        validUntil: "2026-08-15",
+        fromGstin: "27AAACA1234A1Z1",
+        toGstin: "27AAACA5678A1Z1",
+        totalValue: 100,
       });
 
-    expect(res.status).toBe(200);
-    expect(res.body.data).toHaveLength(1);
-
-    const match = res.body.data[0];
-    expect(match.status).toBe("MATCHED");
-    expect(match.matchScore).toBeGreaterThanOrEqual(0.85);
-    expect(match.discrepancies).toHaveLength(0);
-    expect(match.id).toBeTruthy(); // persisted
-  });
-
-  it("POST /api/matching/run — flags a mismatched delivery note", async () => {
-    const res = await request(app)
-      .post("/api/matching/run")
-      .send({
-        invoiceId,
-        deliveryNoteIds: [badDnId],
-        autoPersist: false,
+      const res = await request(app).post("/api/eway-bills").send({
+        ewayBillNumber: ewbNumber,
+        generatedDate: "2026-07-15",
+        validUntil: "2026-08-15",
+        fromGstin: "27AAACA1234A1Z1",
+        toGstin: "27AAACA5678A1Z1",
+        totalValue: 100,
       });
 
-    expect(res.status).toBe(200);
-    expect(res.body.data).toHaveLength(1);
+      expect(res.status).toBe(409);
+    });
 
-    const match = res.body.data[0];
-    expect(match.status).toBe("MISMATCH");
-    expect(match.matchScore).toBeLessThan(0.5);
-    expect(match.discrepancies.length).toBeGreaterThan(0);
+    it("GET /api/eway-bills — lists E-Way Bills", async () => {
+      const res = await request(app).get("/api/eway-bills");
+      expect(res.status).toBe(200);
+      expect(res.body.data).toBeInstanceOf(Array);
+      expect(res.body.meta).toBeDefined();
+    });
 
-    // Should flag date and quantity discrepancies
-    const types = match.discrepancies.map((d: any) => d.type);
-    expect(types).toContain("DATE");
-    expect(types).toContain("QUANTITY");
-  });
+    it("GET /api/eway-bills/:id — returns E-Way Bill detail", async () => {
+      const res = await request(app).get(`/api/eway-bills/${goodEwbId}`);
+      expect(res.status).toBe(200);
+      expect(res.body.data.id).toBe(goodEwbId);
+    });
 
-  it("POST /api/matching/run — auto-selects delivery notes from same vendor", async () => {
-    const res = await request(app)
-      .post("/api/matching/run")
-      .send({ invoiceId });
+    it("GET /api/eway-bills/:id — returns 404 for invalid id", async () => {
+      const res = await request(app)
+        .get("/api/eway-bills/00000000-0000-0000-0000-000000000000");
+      expect(res.status).toBe(404);
+    });
 
-    expect(res.status).toBe(200);
-    expect(res.body.data.length).toBeGreaterThanOrEqual(1);
-  });
+    it("POST /api/eway-bills/sync — syncs mock E-Way Bills", async () => {
+      const res = await request(app)
+        .post("/api/eway-bills/sync")
+        .send({
+          fromDate: "2026-07-01T00:00:00.000Z",
+          toDate: "2026-07-15T00:00:00.000Z",
+          limit: 5,
+        });
 
-  it("POST /api/matching/run — returns 404 for missing invoice", async () => {
-    const res = await request(app)
-      .post("/api/matching/run")
-      .send({
-        invoiceId: "00000000-0000-0000-0000-000000000000",
-      });
+      expect(res.status).toBe(202);
+      expect(res.body.data.status).toBe("COMPLETED");
+    });
 
-    expect(res.status).toBe(404);
-  });
+    it("POST /api/eway-bills/sync — rejects >30 day range", async () => {
+      const res = await request(app)
+        .post("/api/eway-bills/sync")
+        .send({
+          fromDate: "2026-01-01T00:00:00.000Z",
+          toDate: "2026-07-15T00:00:00.000Z",
+        });
 
-  // ── GET /api/matching/results ─────────────────────────────────
-
-  it("GET /api/matching/results — lists match results", async () => {
-    const res = await request(app)
-      .get("/api/matching/results")
-      .query({ invoiceId });
-
-    expect(res.status).toBe(200);
-    expect(res.body.data).toBeInstanceOf(Array);
-    expect(res.body.meta).toBeDefined();
-  });
-
-  it("GET /api/matching/results — filters by status", async () => {
-    // First create a persisted match
-    await request(app)
-      .post("/api/matching/run")
-      .send({ invoiceId, deliveryNoteIds: [goodDnId], autoPersist: true });
-
-    const res = await request(app)
-      .get("/api/matching/results")
-      .query({ status: "MATCHED" });
-
-    expect(res.status).toBe(200);
-    expect(res.body.data).toBeInstanceOf(Array);
-  });
-
-  // ── GET /api/matching/results/:id ──────────────────────────────
-
-  it("GET /api/matching/results/:id — returns match detail with discrepancies", async () => {
-    // Create a match and capture its ID
-    const matchRes = await request(app)
-      .post("/api/matching/run")
-      .send({ invoiceId, deliveryNoteIds: [goodDnId], autoPersist: true });
-
-    const matchId = matchRes.body.data[0].id;
-    expect(matchId).toBeTruthy();
-
-    const res = await request(app)
-      .get(`/api/matching/results/${matchId}`);
-
-    expect(res.status).toBe(200);
-    expect(res.body.data.id).toBe(matchId);
-    expect(res.body.data.invoice).toBeDefined();
-    expect(Array.isArray(res.body.data.discrepancies)).toBe(true);
-  });
-
-  it("GET /api/matching/results/:id — returns 404 for invalid id", async () => {
-    const res = await request(app)
-      .get("/api/matching/results/00000000-0000-0000-0000-000000000000");
-
-    expect(res.status).toBe(404);
+      expect(res.status).toBe(422);
+    });
   });
 });

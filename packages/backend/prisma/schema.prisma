@@ -106,6 +106,7 @@ model EWayBill {
   updatedAt       DateTime       @updatedAt
 
   invoice         Invoice?       @relation(fields: [invoiceId], references: [id])
+  matchResults    MatchResult[]
 
   @@index([ewayBillNumber])
   @@index([status])
@@ -126,6 +127,7 @@ model MatchResult {
 
   invoice         Invoice       @relation(fields: [invoiceId], references: [id])
   deliveryNote    DeliveryNote? @relation(fields: [deliveryNoteId], references: [id])
+  ewayBill        EWayBill?     @relation(fields: [ewayBillId], references: [id])
 
   @@index([status])
   @@index([invoiceId])
