@@ -143,6 +143,7 @@ export default function Discrepancies() {
       {/* Table */}
       <div className="mt-4 overflow-x-auto rounded-xl border border-[var(--color-border-dim)]">
         <table className="w-full text-left text-sm">
+          {results.length > 0 && (
           <thead>
             <tr className="border-b border-[var(--color-border-dim)] bg-surface">
               <th className="px-4 py-3 font-mono text-xs font-medium uppercase tracking-wider text-faint">
@@ -162,6 +163,7 @@ export default function Discrepancies() {
               </th>
             </tr>
           </thead>
+          )}
           <tbody>
             {loading && (
               <tr>
@@ -223,7 +225,7 @@ export default function Discrepancies() {
                             <p className="text-xs text-muted">Auto-resolve if variance is within configured thresholds</p>
                           </div>
                         </div>
-                        <button className="mt-3 w-full rounded-lg border border-emerald/30 bg-emerald-dim px-3 py-1.5 text-xs font-medium text-emerald hover:bg-emerald/20 transition-colors">
+                        <button className="mt-3 w-full rounded-lg bg-emerald px-3 py-2 text-xs font-bold text-white hover:bg-emerald/80 shadow-[0_0_12px_rgba(16,185,129,0.3)] transition-all">
                           Apply to Selected
                         </button>
                       </div>
@@ -239,7 +241,7 @@ export default function Discrepancies() {
                             <p className="text-xs text-muted">Escalate to supervisor with notes for manual verification</p>
                           </div>
                         </div>
-                        <button className="mt-3 w-full rounded-lg border border-amber/30 bg-amber/10 px-3 py-1.5 text-xs font-medium text-amber hover:bg-amber/20 transition-colors">
+                        <button className="mt-3 w-full rounded-lg bg-amber px-3 py-2 text-xs font-bold text-void hover:bg-amber/80 shadow-[0_0_12px_rgba(245,158,11,0.3)] transition-all">
                           Escalate Flagged Items
                         </button>
                       </div>
@@ -255,7 +257,7 @@ export default function Discrepancies() {
                             <p className="text-xs text-muted">Create a formal dispute document for the supplier</p>
                           </div>
                         </div>
-                        <button className="mt-3 w-full rounded-lg border border-red/30 bg-red/10 px-3 py-1.5 text-xs font-medium text-red hover:bg-red/20 transition-colors">
+                        <button className="mt-3 w-full rounded-lg bg-red px-3 py-2 text-xs font-bold text-white hover:bg-red/80 shadow-[0_0_12px_rgba(239,68,68,0.3)] transition-all">
                           Draft Notice
                         </button>
                       </div>

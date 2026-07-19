@@ -136,7 +136,7 @@ export default function Settings() {
 
       {/* ── Tab: Profile ── */}
       {activeTab === "profile" && (
-        <div className="glass-card mt-6 p-6 space-y-6">
+        <div className="glass-card mt-6 p-6 pb-8 space-y-6">
           <h3 className="font-mono text-xs font-medium uppercase tracking-wider text-faint">
             Organization Profile
           </h3>
@@ -213,7 +213,7 @@ export default function Settings() {
 
       {/* ── Tab: Matching Rules ── */}
       {activeTab === "matching" && (
-        <div className="glass-card mt-6 p-6 space-y-8">
+        <div className="glass-card mt-6 p-6 pb-8 space-y-8">
           <div>
             <h3 className="font-mono text-xs font-medium uppercase tracking-wider text-faint">
               Match Weight Distribution
