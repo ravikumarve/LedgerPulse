@@ -7,6 +7,7 @@ Automated 3-way matching engine for industrial manufacturers & distributors. Ing
 - **Backend:** Node.js + TypeScript + Express/Fastify
 - **Frontend:** React + TypeScript + Tailwind CSS + Vite
 - **Database:** SQLite (dev/test) → PostgreSQL (production) via Prisma ORM
+- **Auth:** JWT (jsonwebtoken + bcryptjs) with multi-tenant organization isolation
 - **Testing:** Vitest (frontend) + Supertest + Jest (backend API)
 - **Auth:** JWT / session-based (TBD)
 - **Deployment:** Docker / self-host or cloud (Railway/Fly.io)
@@ -67,6 +68,34 @@ LedgerPulse/
 - **Build Status:** No code changes — pure documentation phase
 - **Next Turn Directive:** Proceed to Phase 1 implementation — Document Ingestion API (email + upload) + OCR pipeline
 
+### [2026-07-17 18:10] — Auth & Multi-Tenant Foundation
+- **State:** Success
+- **MCP Data Used:** code_tree (AST analysis), websearch (multi-tenant RBAC research)
+- **Agents Deployed:** Orchestrator (direct execution)
+- **Architectural Decision:**
+  1. **Prisma schema**: Added User, Organization, OrganizationMember (with ADMIN/REVIEWER/VIEWER roles). Added `organizationId` to all 5 business models (Vendor, Invoice, DeliveryNote, EWayBill, MatchResult) for tenant isolation.
+  2. **Backend auth**: JWT-based auth with bcrypt. `POST /api/auth/register` (creates org + user + admin membership), `POST /api/auth/login`, `GET /api/auth/me`. JWT middleware (`requireAuth`, `optionalAuth`, `requireRole`). Token expires in 7 days.
+  3. **Data isolation**: Every business route now requires `organizationId` on create. Matching service derives orgId from invoice. Sync endpoint auto-resolves org or accepts explicit ID.
+  4. **Frontend auth**: `AuthProvider` context with token persistence in localStorage. ProtectedRoute redirects to `/login`. Login page with demo credentials display. Signup page creates org + account. Layout shows user avatar dropdown + org name in sidebar + logout.
+- **Key Outputs:** Prisma schema (7 models), auth routes, JWT middleware, AuthProvider, Login/Signup pages, ProtectedRoute, Layout user menu
+- **Build Status:** Backend `npx tsc --noEmit` ✅ | Backend 41/41 tests ✅ | Frontend `npx tsc --noEmit` ✅ | Frontend 2/2 tests ✅
+- **Next Turn Directive:** Continue with additional auth features (password reset, invite flow), or start Settings & Configuration pages (matching rules, notification preferences)
+
+### [2026-07-17 19:00] — Landing Page Integration + Dark Theme + Settings Page
+- **State:** Success
+- **MCP Data Used:** code_tree (structure analysis), direct file reads
+- **Agents Deployed:** Orchestrator (direct execution)
+- **Architectural Decision:**
+  1. **Route restructure**: `/` → Landing page (public marketing), `/login` + `/signup` → public auth, `/app/dashboard` → protected dashboard, `/app/invoices`, `/app/discrepancies`, `/app/settings` → protected pages.
+  2. **Dark Obsidian/emerald theme**: Applied Tailwind v4 `@theme` with custom colors (`bg-void`, `bg-surface`, `bg-panel`, `text-emerald`, `text-muted`, etc.). All pages (login, signup, dashboard, discrepancies, settings) now use the dark glass aesthetic matching the landing page.
+  3. **Landing page conversion**: Standalone `LedgerPulse.html` → React `Landing.tsx` component with WebGL Data Loom canvas, custom cursor, Match HUD, bento grid, metric grid, and responsive hamburger nav.
+  4. **Settings page**: 3-tab layout (Organization profile, Matching tolerances, Team members). Org name/timezone/currency editable. Matching tolerances (qty%, price%, total%) configurable. Team member list with roles.
+  5. **Backend**: Added `GET/PUT /api/organization` and `GET /api/organization/members` routes for org settings management.
+  6. **Post-launch fixes** (Gemini review): Replaced Invoices placeholder "coming in Phase 1" with live data grid wired to `GET /api/invoices` + OCR upload modal. Added split-pane discrepancy showcase with 6 simulated mismatch flags (GSTIN, qty delta, price variance, EWB expiry, amount variance, duplicate) + 3 action panels (Accept Tolerance, Flag for Review, Generate Dispute Notice). Enhanced Matching Rules tab with weight distribution sliders (INV↔DN 50%, INV↔EWB 30%, DN↔EWB 20%) that auto-balance to 100%.
+- **Key Outputs:** Landing.tsx + Landing.css (React port of landing page), Settings.tsx (3-tab settings with weights/tolerances), organization.ts (backend settings routes), Invoices.tsx (live data grid + upload modal), Discrepancies.tsx (showcase split-pane), dark theme in index.css
+- **Build Status:** Backend `npx tsc --noEmit` ✅ | Backend 41/41 tests ✅ | Frontend `npx tsc --noEmit` ✅ | Frontend build ✅ | Frontend 2/2 tests ✅
+- **Next Turn Directive:** Continue with billing integration (Gumroad/LemonSqueezy), password reset flow, or Docker Compose production setup
+
 ### [2026-07-17 17:45] — Phase 4: Discrepancy Dashboard + Approval Workflow
 - **State:** Success
 - **MCP Data Used:** code_tree (AST analysis for frontend structure), direct file reads (existing matching routes/services)
@@ -86,7 +115,7 @@ LedgerPulse/
   - `packages/frontend/src/pages/Discrepancies.tsx` — full discrepancy table + detail + approval UI
   - `packages/frontend/src/App.tsx` — updated routes with Layout
 - **Build Status:** Backend `npx tsc --noEmit` ✅ | Backend 41/41 tests ✅ | Frontend `npx tsc --noEmit` ✅ | Frontend 1/1 tests ✅
-- **Next Turn Directive:** Begin Phase 5 — Auth, multi-tenant, billing (Gumroad/LemonSqueezy), or Phase 6 — Production deployment guide + Docker Compose
+- **Next Turn Directive:** Continue with additional auth features (password reset, invite flow), or start Settings & Configuration pages (matching rules, notification preferences)
 
 ### [2026-07-17 12:30] — Phase 3: E-Way Bill Ingestion + 3-Way Matching
 - **State:** Success

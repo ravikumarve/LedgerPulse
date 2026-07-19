@@ -11,6 +11,7 @@ const router = Router();
 
 // --- Schemas ---
 const createInvoiceSchema = z.object({
+  organizationId: z.string().uuid(),
   vendorId: z.string().uuid(),
   invoiceNumber: z.string().min(1),
   invoiceDate: z.string().transform((s) => new Date(s)),
@@ -74,6 +75,7 @@ router.post("/upload", upload.single("file"), async (req: Request, res: Response
 
   const filePath = req.file.path;
   const vendorId = req.body.vendorId as string | undefined;
+  const organizationId = req.body.organizationId as string | undefined;
 
   // Run OCR
   const ocrResult = await runOcr(filePath);
@@ -84,6 +86,7 @@ router.post("/upload", upload.single("file"), async (req: Request, res: Response
   // Create invoice record
   const invoice = await prisma.invoice.create({
     data: {
+      organizationId: organizationId || "00000000-0000-0000-0000-000000000000",
       vendorId: vendorId || "00000000-0000-0000-0000-000000000000",
       invoiceNumber: extracted.invoiceNumber || `OCR-${Date.now()}`,
       invoiceDate: extracted.invoiceDate ? new Date(extracted.invoiceDate) : new Date(),

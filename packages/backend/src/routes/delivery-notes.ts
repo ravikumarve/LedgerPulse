@@ -9,6 +9,7 @@ const router = Router();
 
 // --- Schemas ---
 const createDeliveryNoteSchema = z.object({
+  organizationId: z.string().uuid(),
   vendorId: z.string().uuid(),
   deliveryNoteNumber: z.string().min(1),
   deliveryDate: z.string().transform((s) => new Date(s)),
@@ -65,12 +66,14 @@ router.post("/upload", upload.single("file"), async (req: Request, res: Response
 
   const filePath = req.file.path;
   const vendorId = req.body.vendorId as string;
+  const organizationId = req.body.organizationId as string;
 
   // Run OCR
   const ocrResult = await runOcr(filePath);
 
   const deliveryNote = await prisma.deliveryNote.create({
     data: {
+      organizationId: organizationId || "00000000-0000-0000-0000-000000000000",
       vendorId: vendorId || "00000000-0000-0000-0000-000000000000",
       deliveryNoteNumber: `OCR-DN-${Date.now()}`,
       deliveryDate: new Date(),

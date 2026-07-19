@@ -1,9 +1,110 @@
 @import "tailwindcss";
 
+/* ── Dark Obsidian / Emerald Theme ── */
+@theme {
+  --color-void: #050505;
+  --color-surface: #0e0e11;
+  --color-panel: #16161a;
+  --color-card: #1a1a1f;
+  --color-emerald: #10B981;
+  --color-emerald-dim: rgba(16, 185, 129, 0.1);
+  --color-emerald-glow: rgba(16, 185, 129, 0.4);
+  --color-cyan: #06B6D4;
+  --color-red: #EF4444;
+  --color-amber: #F59E0B;
+  --color-muted: #a1a1aa;
+  --color-faint: #52525b;
+  --color-border-dim: rgba(255, 255, 255, 0.08);
+  --color-border-glow: rgba(16, 185, 129, 0.3);
+  --font-display: "Syncopate", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+}
+
+/* ── Base Styles ── */
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background-color: var(--color-void);
+  color: #ffffff;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-void);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-faint);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-muted);
+}
+
+/* ── Glass card base ── */
+.glass-card {
+  background: rgba(14, 14, 17, 0.7);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  border: 1px solid var(--color-border-dim);
+  border-radius: 16px;
+  box-shadow: 0 40px 100px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* ── Hover card effect ── */
+.hover-card {
+  transition: all 0.3s ease;
+}
+.hover-card:hover {
+  border-color: var(--color-border-glow);
+  transform: translateY(-2px);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+}
+
+/* ── Stat card ── */
+.stat-value {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+/* ── HUD bar ── */
+.hud-bar-track {
+  width: 100%;
+  height: 4px;
+  background: var(--color-void);
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid var(--color-border-dim);
+}
+.hud-bar-fill {
+  height: 100%;
+  background: var(--color-emerald);
+  box-shadow: 0 0 10px var(--color-emerald);
+  transition: width 0.6s ease;
+}
+
+/* ── Code block ── */
+.code-ui {
+  background: var(--color-void);
+  border: 1px solid var(--color-border-dim);
+  border-radius: 12px;
+  padding: 1.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--color-muted);
+  line-height: 1.8;
+  overflow-x: auto;
+}
+.code-key {
+  color: var(--color-cyan);
+}
+.code-str {
+  color: var(--color-emerald);
 }

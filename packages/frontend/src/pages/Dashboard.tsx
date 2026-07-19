@@ -15,24 +15,24 @@ export default function Dashboard() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-      <p className="mt-1 text-sm text-gray-500">
+      <h1 className="text-2xl font-bold text-white">Dashboard</h1>
+      <p className="mt-1 text-sm text-muted">
         Real-time reconciliation overview
       </p>
 
       {loading && (
-        <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {[...Array(3)].map((_, i) => (
+        <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          {[...Array(4)].map((_, i) => (
             <div
               key={i}
-              className="h-32 animate-pulse rounded-xl bg-gray-100"
+              className="h-32 animate-pulse rounded-xl bg-panel"
             />
           ))}
         </div>
       )}
 
       {error && (
-        <div className="mt-8 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+        <div className="mt-8 rounded-lg border border-red/30 bg-red/10 p-4 text-sm text-red">
           Failed to load stats: {error}
         </div>
       )}
@@ -54,7 +54,7 @@ export default function Dashboard() {
                   stats.documents.ewayBills
               )}
               description={`${stats.documents.invoices} invoices · ${stats.documents.deliveryNotes} DNs · ${stats.documents.ewayBills} EWBs`}
-              accent="blue"
+              accent="cyan"
             />
             <StatCard
               title="Pending Review"
@@ -75,30 +75,30 @@ export default function Dashboard() {
               label="Matched"
               value={stats.matched}
               total={stats.totalMatches}
-              color="bg-emerald-500"
+              color="var(--color-emerald)"
             />
             <MiniStat
               label="Partial"
               value={stats.partial}
               total={stats.totalMatches}
-              color="bg-amber-400"
+              color="var(--color-amber)"
             />
             <MiniStat
               label="Mismatched"
               value={stats.mismatched}
               total={stats.totalMatches}
-              color="bg-red-400"
+              color="var(--color-red)"
             />
           </div>
         </>
       )}
 
       {stats && stats.totalMatches === 0 && !loading && (
-        <div className="mt-12 rounded-xl border border-dashed border-gray-300 bg-white p-12 text-center">
-          <p className="text-lg font-medium text-gray-500">
+        <div className="mt-12 rounded-xl border border-dashed border-[var(--color-border-dim)] bg-surface p-12 text-center">
+          <p className="text-lg font-medium text-muted">
             No reconciliation data yet
           </p>
-          <p className="mt-1 text-sm text-gray-400">
+          <p className="mt-1 text-sm text-faint">
             Upload invoices and run matching to see results here
           </p>
         </div>
@@ -116,23 +116,26 @@ function StatCard({
   title: string;
   value: string;
   description: string;
-  accent: "emerald" | "blue" | "amber";
+  accent: "emerald" | "cyan" | "amber";
 }) {
-  const accentColors = {
-    emerald: "bg-emerald-500",
-    blue: "bg-blue-500",
-    amber: "bg-amber-500",
+  const accentColors: Record<string, string> = {
+    emerald: "var(--color-emerald)",
+    cyan: "var(--color-cyan)",
+    amber: "var(--color-amber)",
   };
 
   return (
-    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-      <div className={`h-1 ${accentColors[accent]}`} />
+    <div className="glass-card overflow-hidden hover-card">
+      <div
+        className="h-1"
+        style={{ background: accentColors[accent] }}
+      />
       <div className="p-5">
-        <h3 className="text-xs font-medium uppercase tracking-wider text-gray-500">
+        <h3 className="font-mono text-xs font-medium uppercase tracking-wider text-faint">
           {title}
         </h3>
-        <p className="mt-1 text-3xl font-semibold text-gray-900">{value}</p>
-        <p className="mt-1 text-xs text-gray-400">{description}</p>
+        <p className="mt-1 text-3xl font-semibold text-white">{value}</p>
+        <p className="mt-1 text-xs text-muted">{description}</p>
       </div>
     </div>
   );
@@ -151,18 +154,18 @@ function MiniStat({
 }) {
   const pct = total > 0 ? Math.round((value / total) * 100) : 0;
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4">
+    <div className="glass-card rounded-lg p-4 hover-card">
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-600">{label}</span>
-        <span className="text-lg font-semibold text-gray-900">{value}</span>
+        <span className="text-sm font-medium text-muted">{label}</span>
+        <span className="text-lg font-semibold text-white">{value}</span>
       </div>
-      <div className="mt-2 h-2 overflow-hidden rounded-full bg-gray-100">
+      <div className="mt-2 h-2 overflow-hidden rounded-full bg-void">
         <div
-          className={`h-full rounded-full transition-all ${color}`}
-          style={{ width: `${pct}%` }}
+          className="h-full rounded-full transition-all"
+          style={{ width: `${pct}%`, background: color }}
         />
       </div>
-      <p className="mt-1 text-right text-xs text-gray-400">{pct}%</p>
+      <p className="mt-1 text-right text-xs text-faint">{pct}%</p>
     </div>
   );
 }

@@ -4,6 +4,15 @@ import { prisma } from "../src/index";
 
 describe("Vendors API", () => {
   let vendorId: string;
+  let orgId: string;
+
+  beforeAll(async () => {
+    // Ensure a test org exists
+    const org = await prisma.organization.create({
+      data: { name: "Test Org", slug: `test-vendors-${Date.now()}` },
+    });
+    orgId = org.id;
+  });
 
   afterAll(async () => {
     await prisma.matchResult.deleteMany();
@@ -11,11 +20,15 @@ describe("Vendors API", () => {
     await prisma.deliveryNote.deleteMany();
     await prisma.invoice.deleteMany();
     await prisma.vendor.deleteMany();
+    await prisma.organizationMember.deleteMany();
+    await prisma.user.deleteMany();
+    await prisma.organization.deleteMany();
     await prisma.$disconnect();
   });
 
   it("POST /api/vendors — creates a vendor", async () => {
     const res = await request(app).post("/api/vendors").send({
+      organizationId: orgId,
       name: "Test Vendor",
       gstin: "27AAACA1234A1Z1",
       email: "vendor@test.com",
@@ -24,6 +37,7 @@ describe("Vendors API", () => {
     expect(res.status).toBe(201);
     expect(res.body.data).toHaveProperty("id");
     expect(res.body.data.name).toBe("Test Vendor");
+    expect(res.body.data.organizationId).toBe(orgId);
     vendorId = res.body.data.id;
   });
 

@@ -5,6 +5,7 @@ import { prisma } from "../src/index";
 describe("Delivery Notes API", () => {
   let vendorId: string;
   let dnId: string;
+  let orgId: string;
 
   beforeAll(async () => {
     await prisma.matchResult.deleteMany();
@@ -12,18 +13,33 @@ describe("Delivery Notes API", () => {
     await prisma.deliveryNote.deleteMany();
     await prisma.invoice.deleteMany();
     await prisma.vendor.deleteMany();
+
+    const org = await prisma.organization.create({
+      data: { name: "DN Test Org", slug: `test-dn-${Date.now()}` },
+    });
+    orgId = org.id;
+
     const vendor = await prisma.vendor.create({
-      data: { name: "DN Test Vendor", gstin: "27AAACA9012A1Z1" },
+      data: { organizationId: orgId, name: "DN Test Vendor", gstin: "27AAACA9012A1Z1" },
     });
     vendorId = vendor.id;
   });
 
   afterAll(async () => {
+    await prisma.matchResult.deleteMany();
+    await prisma.eWayBill.deleteMany();
+    await prisma.deliveryNote.deleteMany();
+    await prisma.invoice.deleteMany();
+    await prisma.vendor.deleteMany();
+    await prisma.organizationMember.deleteMany();
+    await prisma.user.deleteMany();
+    await prisma.organization.deleteMany();
     await prisma.$disconnect();
   });
 
   it("POST /api/delivery-notes — creates a delivery note manually", async () => {
     const res = await request(app).post("/api/delivery-notes").send({
+      organizationId: orgId,
       vendorId,
       deliveryNoteNumber: "DN-TEST-001",
       deliveryDate: "2026-07-16",

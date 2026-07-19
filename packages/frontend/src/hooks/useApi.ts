@@ -127,11 +127,11 @@ export function getMatchResult(
 export function resolveMatchResult(
   id: string,
   action: "accept" | "reject",
-  reviewedBy: string,
+  reviewedBy?: string,
   notes?: string
 ): Promise<ApiResponse<MatchResultDetail>> {
   return fetchApi(`/matching/results/${id}/resolve`, {
     method: "PUT",
-    body: JSON.stringify({ action, reviewedBy, notes }),
+    body: JSON.stringify({ action, reviewedBy: reviewedBy ?? "system", notes }),
   });
 }

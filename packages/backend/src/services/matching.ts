@@ -472,8 +472,13 @@ export async function persistMatchResult(
   ewayBillId: string | null,
   output: MatchResultOutput
 ) {
+  // Derive organizationId from the invoice
+  const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId }, select: { organizationId: true } });
+  const organizationId = invoice?.organizationId ?? "00000000-0000-0000-0000-000000000000";
+
   const result = await prisma.matchResult.create({
     data: {
+      organizationId,
       invoiceId,
       deliveryNoteId,
       ewayBillId,

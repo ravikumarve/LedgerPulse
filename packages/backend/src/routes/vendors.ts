@@ -7,6 +7,7 @@ const router = Router();
 
 // --- Schemas ---
 const createVendorSchema = z.object({
+  organizationId: z.string().uuid(),
   name: z.string().min(1, "Vendor name is required"),
   gstin: z.string().regex(/^\d{2}[A-Z]{5}\d{4}[A-Z]{1}[A-Z\d]{1}[Z]{1}[A-Z\d]{1}$/, "Invalid GSTIN format").optional().or(z.literal("")),
   email: z.string().email().optional().or(z.literal("")),

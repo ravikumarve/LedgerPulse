@@ -3,16 +3,25 @@ import { BrowserRouter } from "react-router-dom";
 import App from "../App";
 
 describe("App", () => {
-  it("renders the dashboard heading", () => {
+  it("renders the landing page at /", () => {
     render(
       <BrowserRouter>
         <App />
       </BrowserRouter>
     );
 
-    expect(screen.getByText("LedgerPulse")).toBeInTheDocument();
-    expect(
-      screen.getByText("Supply Chain Reconciliation & Tax Engine")
-    ).toBeInTheDocument();
+    // Landing page hero text
+    expect(screen.getByText("Supply Chain Reconciliation.")).toBeInTheDocument();
+  });
+
+  it("shows the landing page CTA", () => {
+    render(
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
+    );
+
+    expect(screen.getByText("Explore The Engine")).toBeInTheDocument();
+    expect(screen.getByText("View on GitHub")).toBeInTheDocument();
   });
 });

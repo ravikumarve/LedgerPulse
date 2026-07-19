@@ -8,6 +8,7 @@ const router = Router();
 // ── Schemas ─────────────────────────────────────────────────────────
 
 const createEWayBillSchema = z.object({
+  organizationId: z.string().uuid(),
   ewayBillNumber: z.string().min(1),
   invoiceId: z.string().uuid().optional(),
   generatedDate: z.string().transform((s) => new Date(s)),
@@ -20,6 +21,7 @@ const createEWayBillSchema = z.object({
 });
 
 const syncEWayBillSchema = z.object({
+  organizationId: z.string().uuid().optional(),
   fromDate: z.string().transform((s) => new Date(s)),
   toDate: z.string().transform((s) => new Date(s)).optional(),
   limit: z.number().int().positive().max(100).optional().default(50),
@@ -81,7 +83,7 @@ router.post("/", validate(createEWayBillSchema), async (req: Request, res: Respo
  * POST /api/eway-bills/sync — Sync from GST portal (mock)
  */
 router.post("/sync", validate(syncEWayBillSchema), async (req: Request, res: Response) => {
-  const { fromDate, toDate = new Date(), limit } = req.body;
+  const { fromDate, toDate = new Date(), limit, organizationId } = req.body;
 
   // Validate date range (max 30 days)
   const daysRange = Math.abs(toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24);
@@ -93,11 +95,19 @@ router.post("/sync", validate(syncEWayBillSchema), async (req: Request, res: Res
     return;
   }
 
+  // Determine org — use supplied one or find first available
+  let orgId = organizationId;
+  if (!orgId) {
+    const firstOrg = await prisma.organization.findFirst({ select: { id: true } });
+    orgId = firstOrg?.id ?? "00000000-0000-0000-0000-000000000000";
+  }
+
   // Mock: generate sample E-Way Bills for testing
   const mockBills = [];
   for (let i = 0; i < Math.min(limit, 5); i++) {
     const ewbNumber = `EWB${String(Date.now()).slice(-8)}${i}`;
     mockBills.push({
+      organizationId: orgId,
       ewayBillNumber: ewbNumber,
       generatedDate: fromDate,
       validUntil: new Date(fromDate.getTime() + 30 * 24 * 60 * 60 * 1000),

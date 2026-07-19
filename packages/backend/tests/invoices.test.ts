@@ -5,6 +5,7 @@ import { prisma } from "../src/index";
 describe("Invoices API", () => {
   let vendorId: string;
   let invoiceId: string;
+  let orgId: string;
 
   beforeAll(async () => {
     // Clean tables in FK order
@@ -13,18 +14,33 @@ describe("Invoices API", () => {
     await prisma.deliveryNote.deleteMany();
     await prisma.invoice.deleteMany();
     await prisma.vendor.deleteMany();
+
+    const org = await prisma.organization.create({
+      data: { name: "Invoice Test Org", slug: `test-inv-${Date.now()}` },
+    });
+    orgId = org.id;
+
     const vendor = await prisma.vendor.create({
-      data: { name: "Invoice Test Vendor", gstin: "27AAACA5678A1Z1" },
+      data: { organizationId: orgId, name: "Invoice Test Vendor", gstin: "27AAACA5678A1Z1" },
     });
     vendorId = vendor.id;
   });
 
   afterAll(async () => {
+    await prisma.matchResult.deleteMany();
+    await prisma.eWayBill.deleteMany();
+    await prisma.deliveryNote.deleteMany();
+    await prisma.invoice.deleteMany();
+    await prisma.vendor.deleteMany();
+    await prisma.organizationMember.deleteMany();
+    await prisma.user.deleteMany();
+    await prisma.organization.deleteMany();
     await prisma.$disconnect();
   });
 
   it("POST /api/invoices — creates an invoice manually", async () => {
     const res = await request(app).post("/api/invoices").send({
+      organizationId: orgId,
       vendorId,
       invoiceNumber: "INV-TEST-001",
       invoiceDate: "2026-07-15",

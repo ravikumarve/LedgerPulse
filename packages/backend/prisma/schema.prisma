@@ -7,19 +7,69 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// === Auth / Multi-Tenant ===
+
+enum OrgRole {
+  ADMIN
+  REVIEWER
+  VIEWER
+}
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  settings  String?  // JSON for org-level config
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members OrganizationMember[]
+  vendors Vendor[]
+  invoices Invoice[]
+  deliveryNotes DeliveryNote[]
+  ewayBills EWayBill[]
+  matchResults MatchResult[]
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships OrganizationMember[]
+}
+
+model OrganizationMember {
+  id             String       @id @default(uuid())
+  role           OrgRole      @default(VIEWER)
+  userId         String
+  organizationId String
+  createdAt      DateTime     @default(now())
+
+  user         User         @relation(fields: [userId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@unique([userId, organizationId])
+}
+
 // === Core Models ===
 
 model Vendor {
-  id          String   @id @default(uuid())
-  name        String
-  gstin       String?  @unique
-  contractRef String?
-  email       String?
-  phone       String?
-  address     String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  gstin          String?  @unique
+  contractRef    String?
+  email          String?
+  phone          String?
+  address        String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
+  organization Organization @relation(fields: [organizationId], references: [id])
   invoices      Invoice[]
   deliveryNotes DeliveryNote[]
 }
@@ -40,6 +90,7 @@ enum DocumentType {
 
 model Invoice {
   id              String         @id @default(uuid())
+  organizationId  String
   vendorId        String
   invoiceNumber   String
   invoiceDate     DateTime
@@ -54,6 +105,7 @@ model Invoice {
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
+  organization Organization  @relation(fields: [organizationId], references: [id])
   vendor         Vendor          @relation(fields: [vendorId], references: [id])
   deliveryNotes  DeliveryNote[]
   ewayBills      EWayBill[]
@@ -64,22 +116,24 @@ model Invoice {
 }
 
 model DeliveryNote {
-  id                String         @id @default(uuid())
-  vendorId          String
+  id                 String         @id @default(uuid())
+  organizationId     String
+  vendorId           String
   deliveryNoteNumber String
-  deliveryDate      DateTime
-  invoiceId         String?
-  totalQuantity     Float
-  lineItems         String?        // JSON string
-  filePath          String?
-  rawText           String?        // OCR-extracted text
-  weightbridgeValue  Float?         // Weighbridge gross weight
-  status            DocumentStatus @default(PENDING)
-  ingestedAt        DateTime       @default(now())
-  processedAt       DateTime?
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
+  deliveryDate       DateTime
+  invoiceId          String?
+  totalQuantity      Float
+  lineItems          String?        // JSON string
+  filePath           String?
+  rawText            String?        // OCR-extracted text
+  weightbridgeValue  Float?          // Weighbridge gross weight
+  status             DocumentStatus @default(PENDING)
+  ingestedAt         DateTime       @default(now())
+  processedAt        DateTime?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
 
+  organization Organization @relation(fields: [organizationId], references: [id])
   vendor            Vendor         @relation(fields: [vendorId], references: [id])
   invoice           Invoice?       @relation(fields: [invoiceId], references: [id])
   matchResults      MatchResult[]
@@ -90,6 +144,7 @@ model DeliveryNote {
 
 model EWayBill {
   id              String         @id @default(uuid())
+  organizationId  String
   ewayBillNumber  String         @unique
   invoiceId       String?
   generatedDate   DateTime
@@ -105,6 +160,7 @@ model EWayBill {
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
+  organization Organization @relation(fields: [organizationId], references: [id])
   invoice         Invoice?       @relation(fields: [invoiceId], references: [id])
   matchResults    MatchResult[]
 
@@ -114,6 +170,7 @@ model EWayBill {
 
 model MatchResult {
   id              String        @id @default(uuid())
+  organizationId  String
   invoiceId       String
   deliveryNoteId  String?
   ewayBillId      String?
@@ -125,6 +182,7 @@ model MatchResult {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
+  organization Organization @relation(fields: [organizationId], references: [id])
   invoice         Invoice       @relation(fields: [invoiceId], references: [id])
   deliveryNote    DeliveryNote? @relation(fields: [deliveryNoteId], references: [id])
   ewayBill        EWayBill?     @relation(fields: [ewayBillId], references: [id])

@@ -8,18 +8,16 @@ import {
   Discrepancy,
 } from "../hooks/useApi";
 
-const STATUS_OPTIONS = ["", "MATCHED", "PARTIAL", "MISMATCH"] as const;
-
 const STATUS_COLORS: Record<string, string> = {
-  MATCHED: "bg-emerald-100 text-emerald-700",
-  PARTIAL: "bg-amber-100 text-amber-700",
-  MISMATCH: "bg-red-100 text-red-700",
+  MATCHED: "bg-emerald-dim text-emerald",
+  PARTIAL: "bg-amber/10 text-amber",
+  MISMATCH: "bg-red/10 text-red",
 };
 
 const SEVERITY_COLORS: Record<string, string> = {
-  LOW: "bg-gray-100 text-gray-600",
-  MEDIUM: "bg-amber-100 text-amber-700",
-  HIGH: "bg-red-100 text-red-700",
+  LOW: "bg-surface text-muted",
+  MEDIUM: "bg-amber/10 text-amber",
+  HIGH: "bg-red/10 text-red",
 };
 
 export default function Discrepancies() {
@@ -70,26 +68,27 @@ export default function Discrepancies() {
       .finally(() => setDetailLoading(false));
   }, [selectedId]);
 
-  const handleResolve = async (action: "accept" | "reject") => {
-    if (!selectedId) return;
+  const handleResolve = async (accept: boolean) => {
+    if (!selectedId || !detail) return;
     setResolving(true);
     setActionMsg(null);
     try {
-      await resolveMatchResult(selectedId, action, "admin", "Reviewed via dashboard");
+      await resolveMatchResult(selectedId, accept ? "accept" : "reject");
       setActionMsg(
-        action === "accept"
-          ? "Match accepted and documents marked as resolved"
-          : "Match rejected"
+        accept ? "Match accepted ✓" : "Match rejected — document status preserved"
       );
-      setDetail((prev) =>
-        prev ? { ...prev, reviewedBy: "admin", reviewedAt: new Date().toISOString() } : prev
-      );
-      // Refresh the list
+      // Refresh list
       fetchResults();
+      // Refresh detail
+      const res = await getMatchResult(selectedId);
+      setDetail(res.data);
     } catch (e: unknown) {
-      setActionMsg(
-        `Error: ${e instanceof Error ? e.message : "Request failed"}`
-      );
+      const msg = e instanceof Error ? e.message : "Action failed";
+      if (msg.includes("already")) {
+        setActionMsg("Already reviewed — no changes made");
+      } else {
+        setActionMsg(`Error: ${msg}`);
+      }
     } finally {
       setResolving(false);
     }
@@ -97,351 +96,386 @@ export default function Discrepancies() {
 
   return (
     <div>
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Discrepancies</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Review and resolve reconciliation mismatches
-          </p>
-        </div>
-      </div>
+      <h1 className="text-2xl font-bold text-white">Discrepancies</h1>
+      <p className="mt-1 text-sm text-muted">
+        Review and resolve matching discrepancies
+      </p>
 
-      {/* Filters */}
+      {/* Action feedback */}
+      {actionMsg && (
+        <div className="mt-4 rounded-lg border border-emerald/30 bg-emerald-dim p-3 text-sm text-emerald">
+          {actionMsg}
+        </div>
+      )}
+
+      {error && (
+        <div className="mt-4 rounded-lg border border-red/30 bg-red/10 p-3 text-sm text-red">
+          {error}
+        </div>
+      )}
+
+      {/* Filter bar */}
       <div className="mt-6 flex items-center gap-3">
-        <span className="text-sm font-medium text-gray-600">Status:</span>
-        {STATUS_OPTIONS.map((s) => (
-          <button
-            key={s}
-            onClick={() => {
-              setStatusFilter(s);
-              setPage(1);
-            }}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-              statusFilter === s
-                ? "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300"
-                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-            }`}
-          >
-            {s || "All"}
-          </button>
-        ))}
+        <label className="font-mono text-xs uppercase tracking-wider text-faint">
+          Status:
+        </label>
+        <select
+          value={statusFilter}
+          onChange={(e) => {
+            setStatusFilter(e.target.value);
+            setPage(1);
+          }}
+          className="rounded-lg border border-[var(--color-border-dim)] bg-panel px-3 py-1.5 text-sm text-white focus:border-emerald focus:outline-none"
+        >
+          <option value="">All</option>
+          <option value="MATCHED">Matched</option>
+          <option value="PARTIAL">Partial</option>
+          <option value="MISMATCH">Mismatched</option>
+        </select>
+
+        {totalPages > 1 && (
+          <span className="ml-auto text-xs text-faint">
+            Page {page} of {totalPages}
+          </span>
+        )}
       </div>
 
       {/* Table */}
-      <div className="mt-4 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-        {loading && (
-          <div className="space-y-3 p-6">
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="h-10 animate-pulse rounded bg-gray-100" />
-            ))}
-          </div>
-        )}
-
-        {error && (
-          <div className="p-6 text-center text-sm text-red-600">{error}</div>
-        )}
-
-        {!loading && !error && results.length === 0 && (
-          <div className="p-12 text-center text-sm text-gray-400">
-            No match results found
-            {statusFilter && ` with status "${statusFilter}"`}
-          </div>
-        )}
-
-        {!loading && !error && results.length > 0 && (
-          <>
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 bg-gray-50/50">
-                  <th className="px-4 py-3 font-medium text-gray-500">Status</th>
-                  <th className="px-4 py-3 font-medium text-gray-500">Invoice</th>
-                  <th className="px-4 py-3 font-medium text-gray-500">DN</th>
-                  <th className="px-4 py-3 font-medium text-gray-500">EWB</th>
-                  <th className="px-4 py-3 font-medium text-gray-500">Score</th>
-                  <th className="px-4 py-3 font-medium text-gray-500">Reviewed</th>
-                  <th className="px-4 py-3 font-medium text-gray-500">Date</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {results.map((r) => (
-                  <tr
-                    key={r.id}
-                    onClick={() => setSelectedId(r.id)}
-                    className={`cursor-pointer transition-colors hover:bg-gray-50 ${
-                      selectedId === r.id ? "bg-emerald-50/50" : ""
-                    }`}
-                  >
-                    <td className="px-4 py-3">
-                      <span
-                        className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-                          STATUS_COLORS[r.status]
-                        }`}
-                      >
-                        {r.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 font-medium text-gray-900">
-                      {r.invoice.invoiceNumber}
-                    </td>
-                    <td className="px-4 py-3 text-gray-600">
-                      {r.deliveryNote?.deliveryNoteNumber ?? "—"}
-                    </td>
-                    <td className="px-4 py-3 text-gray-600">
-                      {r.ewayBill?.ewayBillNumber ?? "—"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`font-mono text-sm font-medium ${
-                          r.matchScore >= 0.85
-                            ? "text-emerald-600"
-                            : r.matchScore >= 0.5
-                              ? "text-amber-600"
-                              : "text-red-600"
-                        }`}
-                      >
-                        {(r.matchScore * 100).toFixed(0)}%
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-gray-600">
-                      {r.reviewedBy ? (
-                        <span className="flex items-center gap-1 text-emerald-600">
-                          ✓ {r.reviewedBy}
-                        </span>
-                      ) : (
-                        <span className="text-gray-300">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-400">
-                      {new Date(r.createdAt).toLocaleDateString()}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3">
-                <span className="text-xs text-gray-400">
-                  Page {page} of {totalPages}
-                </span>
-                <div className="flex gap-2">
-                  <button
-                    disabled={page <= 1}
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    className="rounded px-3 py-1 text-sm font-medium text-gray-600 hover:bg-gray-100 disabled:opacity-30"
-                  >
-                    ← Prev
-                  </button>
-                  <button
-                    disabled={page >= totalPages}
-                    onClick={() => setPage((p) => p + 1)}
-                    className="rounded px-3 py-1 text-sm font-medium text-gray-600 hover:bg-gray-100 disabled:opacity-30"
-                  >
-                    Next →
-                  </button>
-                </div>
-              </div>
+      <div className="mt-4 overflow-x-auto rounded-xl border border-[var(--color-border-dim)]">
+        <table className="w-full text-left text-sm">
+          <thead>
+            <tr className="border-b border-[var(--color-border-dim)] bg-surface">
+              <th className="px-4 py-3 font-mono text-xs font-medium uppercase tracking-wider text-faint">
+                Score
+              </th>
+              <th className="px-4 py-3 font-mono text-xs font-medium uppercase tracking-wider text-faint">
+                Status
+              </th>
+              <th className="px-4 py-3 font-mono text-xs font-medium uppercase tracking-wider text-faint">
+                Invoice
+              </th>
+              <th className="px-4 py-3 font-mono text-xs font-medium uppercase tracking-wider text-faint">
+                DN
+              </th>
+              <th className="px-4 py-3 font-mono text-xs font-medium uppercase tracking-wider text-faint">
+                EWB
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading && (
+              <tr>
+                <td colSpan={5} className="px-4 py-12 text-center text-muted">
+                  Loading...
+                </td>
+              </tr>
             )}
-          </>
-        )}
+            {!loading && results.length === 0 && (
+              <tr>
+                <td colSpan={5} className="px-4 py-6">
+                  {/* Showcase split-pane — displayed when no real data exists */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Left: Mismatch flags */}
+                    <div className="space-y-2">
+                      <p className="font-mono text-xs font-medium uppercase tracking-wider text-faint mb-3 px-1">
+                        Simulated Mismatch Flags
+                      </p>
+                      {[
+                        { id: "DISC-0042", type: "GSTIN Mismatch", severity: "HIGH", detail: "Vendor GSTIN 27AAACA1234A1Z1 ≠ EWB fromGstin 27AAACA5678A1Z1" },
+                        { id: "DISC-0045", type: "Quantity Delta > 5%", severity: "MEDIUM", detail: "Invoice qty: 100 units | DN qty: 94 units | Δ: 6%" },
+                        { id: "DISC-0047", type: "Unit Price Variance", severity: "LOW", detail: "INR 850.00/unit (invoice) vs INR 832.00/unit (DN)" },
+                        { id: "DISC-0051", type: "EWB Expired", severity: "HIGH", detail: "E-Way Bill 8214-5678-9012 expired 3 days before delivery" },
+                        { id: "DISC-0053", type: "Total Amount Variance", severity: "MEDIUM", detail: "Invoice total: INR 125,000 | Expected: INR 121,500 | Δ: 2.8%" },
+                        { id: "DISC-0056", type: "Duplicate Invoice", severity: "HIGH", detail: "INV-2026-001 submitted twice within 48 hours" },
+                      ].map((flag) => (
+                        <div key={flag.id} className="flex items-start gap-3 rounded-lg border border-[var(--color-border-dim)] bg-surface p-3 hover:bg-panel transition-colors">
+                          <div className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${
+                            flag.severity === "HIGH" ? "bg-red" : flag.severity === "MEDIUM" ? "bg-amber" : "bg-cyan"
+                          }`} />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-xs text-faint">{flag.id}</span>
+                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                flag.severity === "HIGH" ? "bg-red/10 text-red" : flag.severity === "MEDIUM" ? "bg-amber/10 text-amber" : "bg-cyan/10 text-cyan"
+                              }`}>{flag.severity}</span>
+                            </div>
+                            <p className="text-sm font-medium text-white mt-0.5">{flag.type}</p>
+                            <p className="text-xs text-muted mt-0.5 font-mono">{flag.detail}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Right: Action panel */}
+                    <div className="space-y-4">
+                      <p className="font-mono text-xs font-medium uppercase tracking-wider text-faint px-1">
+                        Resolution Actions
+                      </p>
+
+                      {/* Accept Tolerance */}
+                      <div className="rounded-lg border border-[var(--color-border-dim)] bg-surface p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-dim">
+                            <span className="text-emerald text-sm">✓</span>
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-white">Accept Tolerance</p>
+                            <p className="text-xs text-muted">Auto-resolve if variance is within configured thresholds</p>
+                          </div>
+                        </div>
+                        <button className="mt-3 w-full rounded-lg border border-emerald/30 bg-emerald-dim px-3 py-1.5 text-xs font-medium text-emerald hover:bg-emerald/20 transition-colors">
+                          Apply to Selected
+                        </button>
+                      </div>
+
+                      {/* Flag for Review */}
+                      <div className="rounded-lg border border-[var(--color-border-dim)] bg-surface p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-amber/10">
+                            <span className="text-amber text-sm">!</span>
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-white">Flag for Review</p>
+                            <p className="text-xs text-muted">Escalate to supervisor with notes for manual verification</p>
+                          </div>
+                        </div>
+                        <button className="mt-3 w-full rounded-lg border border-amber/30 bg-amber/10 px-3 py-1.5 text-xs font-medium text-amber hover:bg-amber/20 transition-colors">
+                          Escalate Flagged Items
+                        </button>
+                      </div>
+
+                      {/* Generate Dispute Notice */}
+                      <div className="rounded-lg border border-[var(--color-border-dim)] bg-surface p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-red/10">
+                            <span className="text-red text-sm">⚠</span>
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-white">Generate Dispute Notice</p>
+                            <p className="text-xs text-muted">Create a formal dispute document for the supplier</p>
+                          </div>
+                        </div>
+                        <button className="mt-3 w-full rounded-lg border border-red/30 bg-red/10 px-3 py-1.5 text-xs font-medium text-red hover:bg-red/20 transition-colors">
+                          Draft Notice
+                        </button>
+                      </div>
+
+                      {/* Summary */}
+                      <div className="rounded-lg border border-[var(--color-border-dim)] bg-surface p-4">
+                        <h4 className="font-mono text-xs font-medium uppercase tracking-wider text-faint mb-2">Resolution Summary</h4>
+                        <div className="space-y-1.5 text-xs">
+                          <div className="flex justify-between">
+                            <span className="text-muted">Auto-resolved (within tolerance)</span>
+                            <span className="text-emerald font-mono">3/6</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-muted">Pending supervisor review</span>
+                            <span className="text-amber font-mono">2/6</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-muted">Awaiting supplier response</span>
+                            <span className="text-red font-mono">1/6</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            )}
+            {!loading &&
+              results.map((r) => (
+                <tr
+                  key={r.id}
+                  onClick={() => setSelectedId(r.id)}
+                  className={`cursor-pointer border-b border-[var(--color-border-dim)] transition-colors last:border-0 hover:bg-panel ${
+                    selectedId === r.id ? "bg-emerald-dim" : ""
+                  }`}
+                >
+                  <td className="px-4 py-3 font-mono text-white">
+                    {r.matchScore.toFixed(2)}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span
+                      className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                        STATUS_COLORS[r.status] ?? ""
+                      }`}
+                    >
+                      {r.status}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-muted">
+                    {r.invoice?.invoiceNumber || "—"}
+                  </td>
+                  <td className="px-4 py-3 text-muted">
+                    {r.deliveryNote?.deliveryNoteNumber || "—"}
+                  </td>
+                  <td className="px-4 py-3 text-muted">
+                    {r.ewayBill?.ewayBillNumber || "—"}
+                  </td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="mt-4 flex items-center justify-between">
+          <button
+            disabled={page <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            className="rounded-lg border border-[var(--color-border-dim)] bg-surface px-3 py-1.5 text-sm text-muted hover:bg-panel disabled:opacity-30"
+          >
+            Previous
+          </button>
+          <span className="text-xs text-faint">
+            {page} / {totalPages}
+          </span>
+          <button
+            disabled={page >= totalPages}
+            onClick={() => setPage((p) => p + 1)}
+            className="rounded-lg border border-[var(--color-border-dim)] bg-surface px-3 py-1.5 text-sm text-muted hover:bg-panel disabled:opacity-30"
+          >
+            Next
+          </button>
+        </div>
+      )}
 
       {/* Detail Panel */}
       {selectedId && (
-        <div className="mt-6 rounded-xl border border-gray-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
-            <h2 className="text-base font-semibold text-gray-900">
+        <div className="glass-card mt-6 overflow-hidden">
+          <div className="flex items-center justify-between border-b border-[var(--color-border-dim)] p-4">
+            <h3 className="font-mono text-xs font-medium uppercase tracking-wider text-faint">
               Match Detail
-            </h2>
+            </h3>
             <button
               onClick={() => setSelectedId(null)}
-              className="rounded-lg px-2 py-1 text-xs text-gray-400 hover:text-gray-600"
+              className="text-xs text-muted hover:text-white transition-colors"
             >
               Close
             </button>
           </div>
 
           {detailLoading && (
-            <div className="space-y-3 p-6">
-              {[...Array(4)].map((_, i) => (
-                <div key={i} className="h-6 animate-pulse rounded bg-gray-100" />
-              ))}
-            </div>
+            <div className="p-8 text-center text-muted">Loading...</div>
           )}
 
           {detail && !detailLoading && (
-            <div className="p-5">
-              {/* Document references */}
-              <div className="grid grid-cols-3 gap-4">
-                <div className="rounded-lg bg-gray-50 p-3">
-                  <p className="text-xs font-medium text-gray-500">Invoice</p>
-                  <p className="mt-1 text-sm font-semibold text-gray-900">
-                    {detail.invoice.invoiceNumber}
-                  </p>
-                  <p className="text-xs text-gray-400">
-                    ₹{detail.invoice.totalAmount.toLocaleString()}
-                  </p>
-                  <p className="text-xs text-gray-400">
-                    {detail.invoice.vendor.name}
-                  </p>
-                </div>
-                <div className="rounded-lg bg-gray-50 p-3">
-                  <p className="text-xs font-medium text-gray-500">
-                    Delivery Note
-                  </p>
-                  <p className="mt-1 text-sm font-semibold text-gray-900">
-                    {detail.deliveryNote?.deliveryNoteNumber ?? "—"}
-                  </p>
-                  <p className="text-xs text-gray-400">
-                    {detail.deliveryNote?.vendor.name ?? ""}
-                  </p>
-                </div>
-                <div className="rounded-lg bg-gray-50 p-3">
-                  <p className="text-xs font-medium text-gray-500">E-Way Bill</p>
-                  <p className="mt-1 text-sm font-semibold text-gray-900">
-                    {detail.ewayBill?.ewayBillNumber ?? "—"}
-                  </p>
-                  <p className="text-xs text-gray-400">
-                    {detail.ewayBill
-                      ? `₹${detail.ewayBill.totalValue.toLocaleString()}`
-                      : ""}
-                  </p>
-                </div>
+            <div className="p-4 space-y-4">
+              <div className="flex items-center gap-4">
+                <span className="text-3xl font-bold text-white font-display">
+                  {detail.matchScore.toFixed(2)}
+                </span>
+                <span
+                  className={`inline-block rounded-full px-3 py-1 text-xs font-medium ${
+                    STATUS_COLORS[detail.status] ?? ""
+                  }`}
+                >
+                  {detail.status}
+                </span>
               </div>
 
-              {/* Match scores */}
-              <div className="mt-4 grid grid-cols-4 gap-3">
-                <ScoreBadge label="Overall" value={detail.matchScore} />
-                <ScoreBadge label="INV↔DN" value={0} />
-                <ScoreBadge label="INV↔EWB" value={0} />
-                <ScoreBadge label="DN↔EWB" value={0} />
+              <div className="flex flex-wrap gap-6">
+                <div>
+                  <p className="font-mono text-xs uppercase tracking-wider text-faint">
+                    Invoice
+                  </p>
+                  <p className="text-sm text-white">{detail.invoice?.invoiceNumber}</p>
+                </div>
+                <div>
+                  <p className="font-mono text-xs uppercase tracking-wider text-faint">
+                    Delivery Note
+                  </p>
+                  <p className="text-sm text-white">
+                    {detail.deliveryNote?.deliveryNoteNumber || "—"}
+                  </p>
+                </div>
+                <div>
+                  <p className="font-mono text-xs uppercase tracking-wider text-faint">
+                    E-Way Bill
+                  </p>
+                  <p className="text-sm text-white">
+                    {detail.ewayBill?.ewayBillNumber || "—"}
+                  </p>
+                </div>
+                {detail.reviewedBy && (
+                  <div>
+                    <p className="font-mono text-xs uppercase tracking-wider text-faint">
+                      Reviewed by
+                    </p>
+                    <p className="text-sm text-white">{detail.reviewedBy}</p>
+                  </div>
+                )}
               </div>
 
               {/* Discrepancies */}
-              <div className="mt-5">
-                <h3 className="text-sm font-semibold text-gray-900">
-                  Discrepancies
-                  {detail.discrepancies.length > 0 && (
-                    <span className="ml-2 text-xs font-normal text-gray-400">
-                      ({detail.discrepancies.length} items)
-                    </span>
-                  )}
-                </h3>
-
-                {detail.discrepancies.length === 0 && (
-                  <p className="mt-2 text-sm text-emerald-600">
-                    ✓ No discrepancies — clean match
+              {detail.discrepancies.length > 0 && (
+                <div>
+                  <p className="mb-2 font-mono text-xs font-medium uppercase tracking-wider text-faint">
+                    Discrepancies ({detail.discrepancies.length})
                   </p>
-                )}
-
-                {detail.discrepancies.length > 0 && (
-                  <div className="mt-3 space-y-2">
-                    {detail.discrepancies.map((d, i) => (
-                      <DiscrepancyRow key={i} discrepancy={d} />
+                  <div className="space-y-2">
+                    {detail.discrepancies.map((d: Discrepancy, i: number) => (
+                      <div
+                        key={i}
+                        className="rounded-lg border border-[var(--color-border-dim)] bg-surface p-3"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-white">
+                            {d.field}
+                          </span>
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                              SEVERITY_COLORS[d.severity] ?? ""
+                            }`}
+                          >
+                            {d.severity}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs text-muted">{d.details || d.field}</p>
+                        <p className="mt-1 font-mono text-xs text-faint">
+                          expected: {d.expected} &rarr; actual: {d.actual}
+                        </p>
+                      </div>
                     ))}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
 
-              {/* Review status & actions */}
-              <div className="mt-6 border-t border-gray-100 pt-4">
-                {detail.reviewedBy ? (
-                  <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                    <span>✓</span>
-                    <span>
-                      Reviewed by <strong>{detail.reviewedBy}</strong> on{" "}
-                      {detail.reviewedAt
-                        ? new Date(detail.reviewedAt).toLocaleString()
-                        : "—"}
-                    </span>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => handleResolve("accept")}
-                      disabled={resolving}
-                      className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
-                    >
-                      {resolving ? "Processing..." : "✓ Accept Match"}
-                    </button>
-                    <button
-                      onClick={() => handleResolve("reject")}
-                      disabled={resolving}
-                      className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                    >
-                      Reject
-                    </button>
-                  </div>
-                )}
+              {detail.discrepancies.length === 0 && (
+                <div className="rounded-lg border border-emerald/30 bg-emerald-dim p-3 text-sm text-emerald">
+                  No discrepancies — all fields verified
+                </div>
+              )}
 
-                {actionMsg && (
-                  <p
-                    className={`mt-2 text-sm ${
-                      actionMsg.startsWith("Error")
-                        ? "text-red-600"
-                        : "text-emerald-600"
-                    }`}
+              {/* Actions */}
+              {detail.reviewedAt ? (
+                <div className="rounded-lg bg-surface p-3 text-sm text-muted">
+                  Reviewed at {new Date(detail.reviewedAt).toLocaleString()}
+                </div>
+              ) : (
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => handleResolve(true)}
+                    disabled={resolving}
+                    className="rounded-lg bg-emerald px-4 py-2 text-sm font-bold text-void hover:bg-emerald/80 disabled:opacity-50 transition-all"
                   >
-                    {actionMsg}
-                  </p>
-                )}
-              </div>
+                    {resolving ? "Processing..." : "Accept Match"}
+                  </button>
+                  <button
+                    onClick={() => handleResolve(false)}
+                    disabled={resolving}
+                    className="rounded-lg border border-[var(--color-border-dim)] bg-surface px-4 py-2 text-sm text-muted hover:bg-panel hover:text-white disabled:opacity-50 transition-all"
+                  >
+                    {resolving ? "Processing..." : "Reject"}
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
       )}
-    </div>
-  );
-}
-
-function ScoreBadge({ label, value }: { label: string; value: number }) {
-  const pct = Math.round(value * 100);
-  const color =
-    pct >= 85 ? "text-emerald-600" : pct >= 50 ? "text-amber-600" : "text-red-600";
-  return (
-    <div className="rounded-lg border border-gray-100 bg-white p-3 text-center">
-      <p className="text-xs text-gray-500">{label}</p>
-      <p className={`mt-1 text-lg font-bold ${color}`}>{pct}%</p>
-    </div>
-  );
-}
-
-function DiscrepancyRow({ discrepancy }: { discrepancy: Discrepancy }) {
-  return (
-    <div className="rounded-lg border border-gray-100 bg-gray-50/50 p-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span
-            className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase ${
-              SEVERITY_COLORS[discrepancy.severity]
-            }`}
-          >
-            {discrepancy.severity}
-          </span>
-          <span className="text-xs font-medium text-gray-900">
-            {discrepancy.type}
-          </span>
-        </div>
-        <span className="text-xs text-gray-400">{discrepancy.field}</span>
-      </div>
-      {discrepancy.details && (
-        <p className="mt-1 text-xs text-gray-600">{discrepancy.details}</p>
-      )}
-      <div className="mt-1 grid grid-cols-2 gap-4 text-xs">
-        <div>
-          <span className="text-gray-400">Expected: </span>
-          <span className="font-mono text-gray-700">
-            {String(discrepancy.expected)}
-          </span>
-        </div>
-        <div>
-          <span className="text-gray-400">Actual: </span>
-          <span className="font-mono text-gray-700">
-            {String(discrepancy.actual)}
-          </span>
-        </div>
-      </div>
     </div>
   );
 }

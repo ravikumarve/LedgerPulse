@@ -4,11 +4,13 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { PrismaClient } from "@prisma/client";
 import healthRouter from "./routes/health";
+import authRouter from "./routes/auth";
 import vendorsRouter from "./routes/vendors";
 import invoicesRouter from "./routes/invoices";
 import deliveryNotesRouter from "./routes/delivery-notes";
 import matchingRouter from "./routes/matching";
 import ewayBillsRouter from "./routes/eway-bills";
+import organizationRouter from "./routes/organization";
 
 export const prisma = new PrismaClient();
 
@@ -32,11 +34,13 @@ app.use(
 
 // Routes
 app.use("/api/health", healthRouter);
+app.use("/api/auth", authRouter);
 app.use("/api/vendors", vendorsRouter);
 app.use("/api/invoices", invoicesRouter);
 app.use("/api/delivery-notes", deliveryNotesRouter);
 app.use("/api/matching", matchingRouter);
 app.use("/api/eway-bills", ewayBillsRouter);
+app.use("/api/organization", organizationRouter);
 
 // Global error handler
 app.use(
@@ -61,8 +65,11 @@ if (process.env.NODE_ENV !== "test") {
   app.listen(PORT, () => {
     console.log(`🚀 LedgerPulse API running on http://localhost:${PORT}`);
     console.log(`📋 Routes:`);
-    console.log(`   GET  /api/health`);
-    console.log(`   GET  /api/vendors`);
+   console.log(`   GET  /api/health`);
+   console.log(`   POST /api/auth/register`);
+   console.log(`   POST /api/auth/login`);
+   console.log(`   GET  /api/auth/me`);
+   console.log(`   GET  /api/vendors`);
     console.log(`   POST /api/vendors`);
     console.log(`   GET  /api/vendors/:id`);
     console.log(`   PUT  /api/vendors/:id`);
@@ -87,6 +94,9 @@ if (process.env.NODE_ENV !== "test") {
     console.log(`   POST /api/eway-bills`);
     console.log(`   POST /api/eway-bills/sync`);
     console.log(`   GET  /api/eway-bills/:id`);
+   console.log(`   GET  /api/organization`);
+   console.log(`   PUT  /api/organization`);
+   console.log(`   GET  /api/organization/members`);
   });
 }
 

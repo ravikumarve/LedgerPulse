@@ -11,6 +11,7 @@ import app, { prisma } from "../src/index";
 
 // ── Test Data ───────────────────────────────────────────────────────
 
+let orgId: string;
 let vendorId: string;
 let otherVendorId: string;
 let invoiceId: string;
@@ -31,21 +32,31 @@ beforeAll(async () => {
   await prisma.deliveryNote.deleteMany();
   await prisma.invoice.deleteMany();
   await prisma.vendor.deleteMany();
+  await prisma.organizationMember.deleteMany();
+  await prisma.user.deleteMany();
+  await prisma.organization.deleteMany();
+
+  // Create test org
+  const org = await prisma.organization.create({
+    data: { name: "Matching Test Org", slug: `test-match-${Date.now()}` },
+  });
+  orgId = org.id;
 
   // Create vendors
   const vendor = await prisma.vendor.create({
-    data: { name: VENDOR_NAME, gstin: GSTIN },
+    data: { organizationId: orgId, name: VENDOR_NAME, gstin: GSTIN },
   });
   vendorId = vendor.id;
 
   const otherVendor = await prisma.vendor.create({
-    data: { name: OTHER_VENDOR, gstin: OTHER_GSTIN },
+    data: { organizationId: orgId, name: OTHER_VENDOR, gstin: OTHER_GSTIN },
   });
   otherVendorId = otherVendor.id;
 
   // Create invoice (well-structured)
   const invoice = await prisma.invoice.create({
     data: {
+      organizationId: orgId,
       vendorId,
       invoiceNumber: "3WAY-INV-001",
       invoiceDate: new Date("2026-07-01"),
@@ -64,6 +75,7 @@ beforeAll(async () => {
   // Create a delivery note that matches well
   const goodDn = await prisma.deliveryNote.create({
     data: {
+      organizationId: orgId,
       vendorId,
       deliveryNoteNumber: "3WAY-DN-001",
       deliveryDate: new Date("2026-07-03"),
@@ -81,6 +93,7 @@ beforeAll(async () => {
   // Create a delivery note that does NOT match
   const badDn = await prisma.deliveryNote.create({
     data: {
+      organizationId: orgId,
       vendorId: otherVendorId,
       deliveryNoteNumber: "3WAY-DN-002",
       deliveryDate: new Date("2026-04-01"),
@@ -95,6 +108,7 @@ beforeAll(async () => {
   // Create an E-Way Bill that matches (correct vendor GSTIN, matching value)
   const goodEwb = await prisma.eWayBill.create({
     data: {
+      organizationId: orgId,
       ewayBillNumber: "EWB-GOOD-001",
       generatedDate: new Date("2026-07-02"),
       validUntil: new Date("2026-08-01"),
@@ -111,6 +125,7 @@ beforeAll(async () => {
   // Create an E-Way Bill that does NOT match (wrong GSTIN, wrong value, expired)
   const badEwb = await prisma.eWayBill.create({
     data: {
+      organizationId: orgId,
       ewayBillNumber: "EWB-BAD-001",
       generatedDate: new Date("2026-01-01"),
       validUntil: new Date("2026-02-01"), // expired
@@ -130,6 +145,9 @@ afterAll(async () => {
   await prisma.deliveryNote.deleteMany();
   await prisma.invoice.deleteMany();
   await prisma.vendor.deleteMany();
+  await prisma.organizationMember.deleteMany();
+  await prisma.user.deleteMany();
+  await prisma.organization.deleteMany();
   await prisma.$disconnect();
 }, 15000);
 
@@ -194,13 +212,11 @@ describe("3-Way Matching Engine API", () => {
         });
 
       expect(res.status).toBe(200);
-      // Should return one result per DN × EWB combination
       expect(res.body.data).toHaveLength(1);
 
       const match = res.body.data[0];
       expect(match.status).toBe("MATCHED");
       expect(match.matchScore).toBeGreaterThanOrEqual(0.85);
-      // INV↔DN score and INV↔EWB score should both be high
       expect(match.invDnScore).toBeGreaterThanOrEqual(0.8);
       expect(match.invEwbScore).toBeGreaterThanOrEqual(0.8);
       expect(match.discrepancies).toHaveLength(0);
@@ -219,9 +235,6 @@ describe("3-Way Matching Engine API", () => {
       expect(res.status).toBe(200);
       const match = res.body.data[0];
 
-      // Should have EWB-related discrepancies
-      const ewbTypes = match.discrepancies?.map((d: any) => d.type) || [];
-      // The good DN gives INV↔DN match, but bad EWB should cause issues
       expect(match.invEwbScore).toBeLessThan(0.5);
     });
 
@@ -247,13 +260,12 @@ describe("3-Way Matching Engine API", () => {
     });
 
     it("returns match detail with discrepancies", async () => {
-      // Create a persisted match
       const matchRes = await request(app)
         .post("/api/matching/run")
         .send({ invoiceId, deliveryNoteIds: [goodDnId], autoPersist: true });
 
       const matchId = matchRes.body.data[0]?.id;
-      if (!matchId) return; // skip if no match
+      if (!matchId) return;
 
       const res = await request(app).get(`/api/matching/results/${matchId}`);
       expect(res.status).toBe(200);
@@ -276,6 +288,7 @@ describe("3-Way Matching Engine API", () => {
       const res = await request(app)
         .post("/api/eway-bills")
         .send({
+          organizationId: orgId,
           ewayBillNumber: `EWB-TEST-${Date.now()}`,
           generatedDate: "2026-07-15T00:00:00.000Z",
           validUntil: "2026-08-15T00:00:00.000Z",
@@ -293,6 +306,7 @@ describe("3-Way Matching Engine API", () => {
     it("POST /api/eway-bills — rejects duplicate EWB number", async () => {
       const ewbNumber = `EWB-DUP-${Date.now()}`;
       await request(app).post("/api/eway-bills").send({
+        organizationId: orgId,
         ewayBillNumber: ewbNumber,
         generatedDate: "2026-07-15",
         validUntil: "2026-08-15",
@@ -302,6 +316,7 @@ describe("3-Way Matching Engine API", () => {
       });
 
       const res = await request(app).post("/api/eway-bills").send({
+        organizationId: orgId,
         ewayBillNumber: ewbNumber,
         generatedDate: "2026-07-15",
         validUntil: "2026-08-15",
@@ -336,6 +351,7 @@ describe("3-Way Matching Engine API", () => {
       const res = await request(app)
         .post("/api/eway-bills/sync")
         .send({
+          organizationId: orgId,
           fromDate: "2026-07-01T00:00:00.000Z",
           toDate: "2026-07-15T00:00:00.000Z",
           limit: 5,
@@ -375,7 +391,6 @@ describe("3-Way Matching Engine API", () => {
     });
 
     it("PUT /api/matching/results/:id/resolve — accepts a match result", async () => {
-      // Create a fresh match result via matching run
       const matchRes = await request(app)
         .post("/api/matching/run")
         .send({ invoiceId, deliveryNoteIds: [goodDnId], autoPersist: true });
@@ -405,12 +420,10 @@ describe("3-Way Matching Engine API", () => {
       const matchId = matchRes.body.data[0]?.id;
       if (!matchId) return;
 
-      // First resolve
       await request(app)
         .put(`/api/matching/results/${matchId}/resolve`)
         .send({ action: "accept", reviewedBy: "user-1" });
 
-      // Second resolve should be rejected
       const res = await request(app)
         .put(`/api/matching/results/${matchId}/resolve`)
         .send({ action: "accept", reviewedBy: "user-2" });
